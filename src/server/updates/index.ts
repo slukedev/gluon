@@ -1,7 +1,7 @@
 import "server-only";
 import fs from "node:fs";
 import path from "node:path";
-import { all, now, one, run } from "../db";
+import { all, DATA_DIR, db, now, one, run } from "../db";
 import { host } from "../host/exec";
 import { hostPath } from "../host/paths";
 import { getSetting } from "../settings";
@@ -13,6 +13,8 @@ import { umbrelAction } from "../platform/umbrel";
 import { AppError } from "../errors";
 import type { User } from "../auth/users";
 import { CHANNEL_NAME, type GithubTarget, type UpdateChannel, type UpdateLog, type UpdateMethod, type UpdateOption, type UpdateRelation, type UpdateRun, type UpdateStage, type UpdatesStatus } from "@/lib/updates-types";
+import { decideAuto } from "./policy";
+import { recoverChatServerUpdates, updateChatServers } from "./chat-server";
 import { REPO, changesSince, detectInstall, latestOnGithub, relate, runningBuild, umbrelStoreVersion, type InstallDetail } from "./source";
 
 /**
@@ -37,6 +39,7 @@ type G = typeof globalThis & {
   __gluonUpdateCheck?: Check;
   __gluonUpdateChecking?: { channel: UpdateChannel; promise: Promise<Check> };
   __gluonUpdateWatch?: ReturnType<typeof setInterval> | null;
+  __gluonUpdateWatching?: boolean;
   __gluonUpdateStarting?: boolean;
 };
 const g = globalThis as G;
@@ -271,7 +274,13 @@ async function watch() {
   const still = one<{ n: number }>("SELECT COUNT(*) AS n FROM self_updates WHERE outcome = 'running'")!.n;
   if (still && !g.__gluonUpdateWatch) {
     g.__gluonUpdateWatch = setInterval(() => {
-      void watch().then(() => publish("updates", { at: Date.now() }));
+      // A slow systemctl must not stack a second check behind the first.
+      if (g.__gluonUpdateWatching) return;
+      g.__gluonUpdateWatching = true;
+      void watch()
+        .then(() => publish("updates", { at: Date.now() }))
+        .catch((e: unknown) => console.error("[gluon] update watch failed", e))
+        .finally(() => (g.__gluonUpdateWatching = false));
     }, 3000);
     g.__gluonUpdateWatch.unref?.();
   } else if (!still && g.__gluonUpdateWatch) {
@@ -294,6 +303,32 @@ function installScript() {
   fs.mkdirSync(hostPath(DIR), { recursive: true, mode: 0o700 });
   fs.copyFileSync(src, hostPath(SCRIPT));
   fs.chmodSync(hostPath(SCRIPT), 0o700);
+}
+
+const SNAPSHOT_PREFIX = "gluon-before-update-";
+const KEEP_SNAPSHOTS = 2;
+
+/**
+ * A copy of the database as the running version left it. Going back to an older version puts its
+ * image back but not the data the newer one may have changed; this is the way back for that.
+ */
+export async function snapshotDb(version: string) {
+  const dir = path.join(DATA_DIR, "backups");
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const file = path.join(dir, `${SNAPSHOT_PREFIX}${version.replace(/[^A-Za-z0-9_.+-]/g, "_").slice(0, 64)}-${Date.now()}.db`);
+    await db().backup(file);
+    fs.chmodSync(file, 0o600);
+  } catch (e) {
+    throw new Error(`Couldn't save a copy of Gluon's database first (${(e as NodeJS.ErrnoException).code === "ENOSPC" ? "the drive is full" : (e as Error).message}).`);
+  }
+  const old = fs
+    .readdirSync(dir)
+    .filter((f) => f.startsWith(SNAPSHOT_PREFIX) && f.endsWith(".db"))
+    .map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs }))
+    .sort((a, b) => b.t - a.t)
+    .slice(KEEP_SNAPSHOTS);
+  for (const { f } of old) fs.rmSync(path.join(dir, f), { force: true });
 }
 
 export async function startUpdate(opts: {
@@ -348,6 +383,7 @@ async function startUpdateClaimed(opts: Parameters<typeof startUpdate>[0]): Prom
   );
 
   try {
+    await snapshotDb(s.running.version);
     if (opts.method === "umbrel") {
       if (detail.install.kind !== "umbrel") throw new Error("Gluon isn't installed through Umbrel.");
       await umbrelAction(detail.install.appId, "update");
@@ -402,17 +438,9 @@ async function startUpdateClaimed(opts: Parameters<typeof startUpdate>[0]): Prom
   return toRun(one<Row>("SELECT * FROM self_updates WHERE id = ?", id)!);
 }
 
-const ASAP_GAP = 45 * 60_000;
-
-/** Nightly "as it lands": not within 45 minutes of the last update, and not again for a build that already failed. */
-function asapBlocked(to: string | null): "wait" | "failed" | null {
-  const last = one<{ t: number | null }>("SELECT MAX(started_at) AS t FROM self_updates")?.t ?? 0;
-  if (now() - last < ASAP_GAP) return "wait";
-  if (to && one("SELECT id FROM self_updates WHERE to_version = ? AND outcome = 'failed' AND auto = 1", to)) return "failed";
-  return null;
-}
-
 async function background(opts: { install?: boolean } = {}) {
+  // Before Gluon's own update, which would replace this process partway through.
+  await updateChatServers(opts).catch((e) => console.error("[gluon] chat server update check failed", e));
   const { status: s, certain } = await evaluate();
   const settings = s.settings;
   const opt = s.options.find((o) => o.method === settings.method) ?? s.options[0];
@@ -424,26 +452,34 @@ async function background(opts: { install?: boolean } = {}) {
   const nightly = settings.channel === "nightly";
   const fromGithub = !!s.latest && available.some((o) => o.method === "github");
   const name = fromGithub && s.latest ? (nightly ? `${CHANNEL_NAME.nightly} ${s.latest.version}` : `Gluon ${s.latest.version}`) : "A newer Gluon";
-  let cause = s.latest?.title && s.latest.title !== name ? s.latest.title : "Install it from Settings → Updates, or turn on automatic updates.";
 
-  if (settings.auto && opt?.available) {
-    const to = opt.method === "github" ? (opt.target?.version ?? null) : opt.storeVersion;
-    if (nightly && settings.nightlyTiming === "asap") {
-      const blocked = asapBlocked(to);
-      if (blocked !== "failed") {
-        // Automatic updates will take it: nothing for a person to do.
-        resolve("gluon-update");
-        if (!blocked && certain && opts.install !== false) await startAuto(opt.method);
-        return;
-      }
-      cause = "The automatic update to it didn't finish. Gluon will try the next nightly on its own, or you can try this one from Settings → Updates.";
-    } else {
-      resolve("gluon-update");
-      const lastAuto = one<{ t: number | null }>("SELECT MAX(started_at) AS t FROM self_updates WHERE auto = 1")?.t ?? 0;
-      if (certain && opts.install !== false && new Date().getHours() === settings.hour && now() - lastAuto > 20 * 3600_000) await startAuto(opt.method);
-      return;
-    }
+  const to = opt?.available ? (opt.method === "github" ? (opt.target?.version ?? null) : opt.storeVersion) : null;
+  const decision = decideAuto({
+    settings,
+    option: opt?.available ? { method: opt.method, to } : null,
+    runningVersion: s.running.version,
+    certain,
+    now: now(),
+    hour: new Date().getHours(),
+    lastStartedAt: one<{ t: number | null }>("SELECT MAX(started_at) AS t FROM self_updates")?.t ?? 0,
+    lastAutoStartedAt: one<{ t: number | null }>("SELECT MAX(started_at) AS t FROM self_updates WHERE auto = 1")?.t ?? 0,
+    failedAutoAttempts: to ? (one<{ n: number }>("SELECT COUNT(*) AS n FROM self_updates WHERE to_version = ? AND outcome = 'failed' AND auto = 1", to)?.n ?? 0) : 0,
+  });
+  if (decision.kind !== "ask") {
+    resolve("gluon-update");
+    if (decision.kind === "install" && opts.install !== false && opt) await startAuto(opt.method);
+    return;
   }
+  const cause =
+    decision.why === "major"
+      ? `It's a new major version, so it may change how things work. Read what changed, then install it from Settings → Updates.`
+      : decision.why === "failed"
+        ? nightly && settings.nightlyTiming === "asap"
+          ? "The automatic update to it didn't finish. Gluon will try the next nightly on its own, or you can try this one from Settings → Updates."
+          : "The automatic update to it didn't finish. Try it from Settings → Updates to see why."
+        : s.latest?.title && s.latest.title !== name
+          ? s.latest.title
+          : "Install it from Settings → Updates, or turn on automatic updates.";
   raise({
     id: "gluon-update",
     kind: "gluon-update",
@@ -469,6 +505,7 @@ export function reconsider() {
 onStart("updates", () => {
   // Finish the books on an update that replaced the previous process.
   setTimeout(() => void watch().catch(() => undefined), 15_000);
+  setTimeout(() => void recoverChatServerUpdates(), 20_000);
   every(30 * 60_000, () => background());
   setTimeout(() => void background().catch(() => undefined), 60_000);
 });

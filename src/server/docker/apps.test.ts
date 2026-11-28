@@ -32,6 +32,12 @@ describe("an app's state in one line", () => {
     expect(aggregate([ctr("web", "exited", "Exited (0) 1 hour ago"), ctr("migrate", "exited", "Exited (0) 2 hours ago")], new Set(["migrate"])).line).toBe("stopped");
   });
 
+  it("doesn't count a job its restart policy lets finish (marked done when listed)", () => {
+    const init = { ...ctr("init", "exited", "Exited (0) 3 hours ago"), done: true };
+    expect(aggregate([ctr("web", "running", "Up 2 hours"), init])).toEqual({ line: "running", summary: "Running" });
+    expect(aggregate([ctr("web", "running", "Up 2 hours"), ctr("db", "exited", "Exited (0) 1 hour ago"), init])).toEqual({ line: "unhealthy", summary: "1 of 2 stopped" });
+  });
+
   it("says when only some parts are paused, and when one keeps restarting", () => {
     expect(aggregate([ctr("web", "running", "Up 1 hour"), ctr("db", "paused", "Up 1 hour (Paused)")])).toEqual({ line: "paused", summary: "1 of 2 paused" });
     expect(aggregate([ctr("web", "restarting", "Restarting (1) 5 seconds ago")])).toEqual({ line: "unhealthy", summary: "Restarting over and over" });

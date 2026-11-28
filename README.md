@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/slukedev/gluon/actions/workflows/ci.yml"><img src="https://github.com/slukedev/gluon/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue" alt="License: GPL-3.0-or-later"></a>
-  <img src="https://img.shields.io/badge/node-%E2%89%A522-brightgreen" alt="Node 22 or newer">
+  <img src="https://img.shields.io/badge/node-%E2%89%A524-brightgreen" alt="Node 24 or newer">
   <img src="https://img.shields.io/badge/runs%20on-Linux%20%2B%20Docker-informational" alt="Runs on Linux with Docker">
 </p>
 
@@ -224,8 +224,13 @@ Settings → Updates has two channels. **Stable** follows tagged releases. **Nig
 change pushed to `main`: Gluon checks every half hour and can install each nightly as it lands, or
 once a day in an hour you pick. Updating downloads the new version, builds it on your server, swaps it
 in, and puts the previous version back if the new one doesn't come up healthy. Switching from Nightly
-back to Stable never downgrades on its own. Installs from Umbrel's app store can also update through
-Umbrel.
+back to Stable never downgrades on its own, and automatic updates never install a new major version
+without you. Installs from Umbrel's app store can also update through Umbrel.
+
+With automatic updates on, a Quark chat server Gluon set up updates in the same hour. Gluon keeps the
+new version only if Quark answers on it, and otherwise goes back to the one it had, with its settings
+and accounts as they were. The last two copies of its data, without shared files, are kept in
+`/data/backups/chat`.
 
 To update by hand instead, from the `gluon` folder:
 
@@ -242,6 +247,10 @@ to the current folder:
 ```sh
 docker run --rm -v gluon_gluon-data:/data -v "$PWD":/backup alpine tar czf /backup/gluon-data.tgz -C /data .
 ```
+
+Before each update Gluon also saves a copy of its database in `/data/backups` (the last two). If an
+update went back to the previous version and something looks wrong, stop Gluon and copy the newest
+one over `/data/gluon.db` and delete `gluon.db-wal` and `gluon.db-shm` next to it.
 
 ## Uninstall
 
@@ -265,7 +274,7 @@ removed; whatever you set up through it (mounts, Caddy routes, DNS records) stay
 
 ## Development
 
-You'll need Node 22 or newer (the Docker image uses Node 24).
+You'll need Node 24 or newer (the Docker image uses Node 26).
 
 ```sh
 npm install

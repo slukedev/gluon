@@ -6,6 +6,7 @@ import { DATA_DIR } from "./db";
 import { safeFetch, type NetPolicy } from "./integrations/net";
 import { listApps } from "./docker/apps";
 import { pickEvictions, type CacheFile } from "./icons-cache";
+import { imageWork, loadSharp } from "./sharp";
 
 /**
  * Kept on disk so icons load when the internet is down and household members' browsers never contact
@@ -130,8 +131,9 @@ async function fetchIcon(url: string, policy: NetPolicy): Promise<Icon | null> {
     if (type === "image/svg+xml") return r.body.length <= 512 * 1024 ? { type, body: r.body } : null;
     if (r.body.length <= KEEP_BYTES) return { type, body: r.body };
     // A 1.4 MB logo is common in repos; icons draw at 24–64 px, so keep a small PNG instead.
-    const sharp = (await import("sharp")).default;
-    const body = await sharp(r.body, { limitInputPixels: 64_000_000 }).resize(ICON_PX, ICON_PX, { fit: "inside", withoutEnlargement: true }).png().toBuffer();
+    const sharp = await loadSharp();
+    if (!sharp) return null;
+    const body = await imageWork(() => sharp(r.body, { limitInputPixels: 64_000_000 }).resize(ICON_PX, ICON_PX, { fit: "inside", withoutEnlargement: true }).png().toBuffer());
     return { type: "image/png", body };
   } catch {
     return null;

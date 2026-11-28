@@ -7,3 +7,10 @@ data
 !README.md
 .dev-credentials
 docker/*.yml
+.github
+docs
+deploy
+test
+playwright-report
+test-results
+*.tsbuildinfo

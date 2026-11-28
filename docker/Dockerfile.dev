@@ -1,6 +1,6 @@
-FROM node:24-bookworm
+FROM node:26-trixie
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      util-linux smartmontools iproute2 procps unzip 7zip xz-utils bzip2 zstd dnsutils iputils-ping \
+      util-linux smartmontools iproute2 procps unzip 7zip xz-utils bzip2 zstd bind9-dnsutils iputils-ping \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1 GLUON_DATA=/data

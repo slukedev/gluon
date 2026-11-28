@@ -279,7 +279,7 @@ export function ChatServerFlow({ target, data, status, commit, onClose, onReload
   const title = converting ? "Set it up as a chat server" : existing ? `Edit ${existing.name}` : "Put a chat server on the internet";
   const description = converting && existing
     ? `${bare(data.urls[existing.id] ?? "")} points web visitors at port ${existing.backend.port}, which only chat apps understand. This keeps the address and sets it up the way XMPP expects.`
-    : "Chat apps connect straight to the server. Gluon keeps its certificate current and checks it's reachable.";
+    : undefined;
   const primary = last ? (existing ? "Save changes" : "Put it on the internet") : "Continue";
   const ports = [form.c2s, ...(form.federation ? [form.s2s] : [])];
 
@@ -352,7 +352,7 @@ export function ChatServerFlow({ target, data, status, commit, onClose, onReload
                     <Skeleton height={68} radius={8} />
                     <Skeleton height={68} radius={8} />
                   </div>
-                ) : (
+                ) : !list?.length ? null : (
                   <div className={c.servers} role="radiogroup" aria-label="Chat server">
                     {(list ?? []).map((sv) => {
                       const on = form.container === sv.container;
@@ -391,7 +391,7 @@ export function ChatServerFlow({ target, data, status, commit, onClose, onReload
                   </div>
                 )}
                 {servers.error && <p className={f.faint}>Couldn&rsquo;t look for chat servers ({servers.error.message}). Enter the port it listens on instead.</p>}
-                {list && list.length === 0 && <p className={f.faint}>No Quark, Prosody, ejabberd or Snikket container here. If yours uses another image, enter its client port.</p>}
+                {list && list.length === 0 && <p className={f.faint}>No Quark, Prosody, ejabberd or Snikket container here.</p>}
                 {picked && !picked.ports.c2s && (
                   <Notice tone="attention" title={`${picked.container} doesn't publish a client port`}>
                     Chat apps need to reach port 5222 on this server. Publish it in the app&rsquo;s settings, or enter the port it uses below.
@@ -399,7 +399,7 @@ export function ChatServerFlow({ target, data, status, commit, onClose, onReload
                 )}
                 {(form.container === null || (picked && !picked.ports.c2s) || !!errors.c2s) && (
                   <div className={f.row2}>
-                    <Field label="Port chat apps sign in on" error={errors.c2s} description="Usually 5222.">
+                    <Field label="Port chat apps sign in on" error={errors.c2s}>
                       <Input value={form.c2s} onChange={(e) => set("c2s", e.target.value.replace(/\D/g, "").slice(0, 5))} inputMode="numeric" mono placeholder="5222" />
                     </Field>
                   </div>
@@ -421,7 +421,7 @@ export function ChatServerFlow({ target, data, status, commit, onClose, onReload
                     Accounts on {existing!.host} don&rsquo;t move to {domain} by themselves. Change the chat server&rsquo;s own VirtualHost to match, or people won&rsquo;t be able to sign in.
                   </Notice>
                 )}
-                <Field label="Name" error={errors.name} description="Shown in Gluon.">
+                <Field label="Name" error={errors.name}>
                   <Input value={form.name} onChange={(e) => set("name", e.target.value)} maxLength={60} placeholder="Chat" />
                 </Field>
               </div>

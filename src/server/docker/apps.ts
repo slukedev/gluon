@@ -1,5 +1,6 @@
 import "server-only";
 import { isChatKind, serviceKind } from "@/lib/service-kind";
+import { finishedJob } from "@/lib/app-health";
 import { activePlatform } from "../platform";
 import { umbrelApps, umbrelAppState, umbrelStores, type UmbrelAppState, type UmbrelInstalledApp } from "../platform/umbrel";
 import fs from "node:fs";
@@ -35,6 +36,8 @@ export interface ContainerSummary {
   createdAt: number;
   ports: PortMapping[];
   networkMode: string;
+  /** A one-off job that finished (lib/app-health finishedJob): not a problem, and not the app's state. */
+  done: boolean;
 }
 
 export interface AppRouteRef {
@@ -360,6 +363,45 @@ export function listApps(): Promise<AppSummary[]> {
   return value;
 }
 
+type RefCache = Map<string, string | null>;
+const refCache = ((globalThis as typeof globalThis & { __gluonImageRefs?: RefCache }).__gluonImageRefs ??= new Map());
+
+/**
+ * Docker lists a container's image by id ("sha256:...") once its tag has moved on, for example after
+ * a newer image was pulled but the container not yet recreated. Everything that tells apps apart by
+ * image (which chat server it is, update checks) needs the name, so read back what the container was
+ * started from, or else a tag the image still carries.
+ */
+export async function nameImages(list: Pick<Docker.ContainerInfo, "Id" | "Image" | "ImageID">[]): Promise<void> {
+  const d = docker();
+  await Promise.all(
+    list.map(async (c) => {
+      if (!c.Image.startsWith("sha256:")) return;
+      const key = `${c.Id}:${c.ImageID || c.Image}`;
+      let ref = refCache.get(key);
+      if (ref === undefined) {
+        ref = null;
+        try {
+          const started = (await d.getContainer(c.Id).inspect()).Config?.Image ?? "";
+          if (started && !started.startsWith("sha256:")) ref = started;
+        } catch {
+          /* gone */
+        }
+        if (!ref) {
+          try {
+            ref = (await d.getImage(c.ImageID || c.Image).inspect()).RepoTags?.find((t) => !t.endsWith(":<none>")) ?? null;
+          } catch {
+            /* gone */
+          }
+        }
+        if (refCache.size > 500) refCache.clear();
+        refCache.set(key, ref);
+      }
+      if (ref) c.Image = ref;
+    }),
+  );
+}
+
 function toSummary(c: Docker.ContainerInfo): ContainerSummary {
   const health = healthFrom(c.Status);
   const ports: PortMapping[] = [];
@@ -385,7 +427,37 @@ function toSummary(c: Docker.ContainerInfo): ContainerSummary {
     createdAt: c.Created * 1000,
     ports,
     networkMode: c.HostConfig?.NetworkMode ?? "default",
+    done: false,
   };
+}
+
+type PolicyCache = Map<string, string | null>;
+const policyCache = ((globalThis as typeof globalThis & { __gluonRestartPolicies?: PolicyCache }).__gluonRestartPolicies ??= new Map());
+
+/**
+ * Docker's list doesn't carry restart policies, and only a container that exited cleanly needs one
+ * (to tell a finished job from something that stopped). A container keeps its policy for life.
+ */
+async function restartPolicies(list: Docker.ContainerInfo[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  await Promise.all(
+    list
+      .filter((c) => c.State === "exited" && exitCodeOf(c.Status) === 0)
+      .map(async (c) => {
+        let p = policyCache.get(c.Id);
+        if (p === undefined) {
+          p = await docker()
+            .getContainer(c.Id)
+            .inspect()
+            .then((i) => i.HostConfig?.RestartPolicy?.Name ?? "")
+            .catch(() => null);
+          if (policyCache.size > 2000) policyCache.clear();
+          if (p !== null) policyCache.set(c.Id, p);
+        }
+        out.set(c.Id, p);
+      }),
+  );
+  return out;
 }
 
 /** The exit code in a container's status ("Exited (0) 2 hours ago"), or null. */
@@ -396,7 +468,7 @@ export function exitCodeOf(status: string): number | null {
 
 /** A one-off job that finished cleanly is done, not stopped, so it doesn't count against the app. */
 export function aggregate(all: ContainerSummary[], oneShot: Set<string> = new Set()): { line: LineState; summary: string } {
-  const done = (c: ContainerSummary) => c.state === "exited" && !!c.service && oneShot.has(c.service) && exitCodeOf(c.status) === 0;
+  const done = (c: ContainerSummary) => c.done || (c.state === "exited" && !!c.service && oneShot.has(c.service) && exitCodeOf(c.status) === 0);
   const containers = all.some((c) => !done(c)) ? all.filter((c) => !done(c)) : all;
   const n = containers.length;
   const count = (l: LineState) => containers.filter((c) => c.line === l).length;
@@ -468,6 +540,7 @@ async function buildApps(): Promise<AppSummary[]> {
     return Promise.all([on ? umbrelApps().catch(() => null) : null, on ? umbrelStores().catch(() => null) : null]);
   });
   const [list, [uApps, uStores], lan] = await Promise.all([docker().listContainers({ all: true }), umbrelView, lanHost()]);
+  const [, policies] = await Promise.all([nameImages(list), restartPolicies(list)]);
   const uById = new Map((uApps ?? []).map((a) => [a.id, a]));
   const latestById = new Map<string, { version: string; storeId: string }>();
   for (const st of uStores ?? []) for (const a of st.apps) if (!latestById.has(a.id)) latestById.set(a.id, { version: a.version, storeId: st.id });
@@ -525,10 +598,14 @@ async function buildApps(): Promise<AppSummary[]> {
     const meta: CasaMeta | null = u
       ? { ...fileMeta, title: u.name, icon: u.icon ?? fileMeta?.icon, portMap: u.port ?? fileMeta?.portMap, index: u.path || fileMeta?.index }
       : fileMeta;
+    const oneShot = oneShotFor(ownFile);
     const containers = cs.map(toSummary).sort((a, b) => a.name.localeCompare(b.name));
+    for (const c of containers) {
+      c.done = finishedJob({ state: c.state, exitCode: exitCodeOf(c.status), restartPolicy: policies.get(c.id) ?? null, oneShot: !!c.service && oneShot.has(c.service) });
+    }
     const main = (meta?.main && containers.find((c) => c.service === meta.main)) || containers[0]!;
     const pref = prefs.get(id);
-    let { line, summary } = aggregate(containers, oneShotFor(ownFile));
+    let { line, summary } = aggregate(containers);
     if (u && u.state !== "ready" && u.state !== "running" && u.state !== "stopped" && UMBREL_STATE_TEXT[u.state]) {
       line = "starting";
       summary = UMBREL_STATE_TEXT[u.state]!;

@@ -401,7 +401,7 @@ export function NotifyStep() {
       </form>
 
       <Actions
-        skip={{ label: "Only show problems here", onClick: next, disabled: !!busy }}
+        skip={{ label: "Skip for now", onClick: next, disabled: !!busy }}
         primary={
           <Button variant="primary" onClick={() => void save()} loading={busy === "save"} disabled={busy === "test"}>
             Save and continue

@@ -47,7 +47,18 @@ function migrate(db: Database.Database) {
 }
 
 export function db(): Database.Database {
-  if (!g.__gluonDb) g.__gluonDb = open();
+  if (!g.__gluonDb) {
+    const opened = open();
+    g.__gluonDb = opened;
+    // Closing checkpoints the WAL, so a stopped container leaves one self-contained gluon.db behind.
+    process.once("exit", () => {
+      try {
+        if (opened.open) opened.close();
+      } catch {
+        // SQLite recovers from the WAL on the next open.
+      }
+    });
+  }
   return g.__gluonDb;
 }
 

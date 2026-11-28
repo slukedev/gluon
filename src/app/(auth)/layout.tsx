@@ -15,7 +15,6 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <BondField className={s.lines} />
         <div className={s.name}>
           <div className={s.plateName}>{name}</div>
-          <p>Apps, files and health for the server at home.</p>
         </div>
       </aside>
       <main className={s.main}>{children}</main>

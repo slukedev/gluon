@@ -74,8 +74,9 @@ function Reading<T>({ label, q, what, lines, children }: { label: string; q: Que
         <div className={`${o.readingBody} appear`}>{children(q.data)}</div>
       ) : q.error ? (
         <PartError
-          message={q.error.message || `Gluon couldn't read ${what}.`}
-          detail={typeof q.error.details?.detail === "string" ? q.error.details.detail : null}
+          // Plain words lead on a first look; the system's own message sits under them for whoever needs it.
+          message={`Couldn't read ${what}.`}
+          detail={typeof q.error.details?.detail === "string" ? q.error.details.detail : q.error.message || null}
           onRetry={() => void q.mutate()}
         />
       ) : (

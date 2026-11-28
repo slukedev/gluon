@@ -26,9 +26,10 @@ import { AppIcon } from "./AppIcon";
 import { Addresses } from "./Addresses";
 import { CpuMeter, MemMeter, useAppUsage } from "./Meters";
 import { umbrelBusy } from "./umbrelStream";
-import { parts, trouble } from "./plain";
+import { parts } from "./plain";
+import { appMark } from "@/lib/app-health";
 import type { StatusPayload } from "@/server/status";
-import { findingWord, findingsByApp } from "@/lib/finding-words";
+import { findingsByApp } from "@/lib/finding-words";
 import { removeCopyConfirm, stopCopyConfirm, uninstallUmbrelConfirm } from "./copies";
 import { moveBlock, uninstallRoute } from "@/lib/app-move-types";
 import { MoveDialog } from "./MoveDialog";
@@ -39,8 +40,6 @@ import s from "./apps.module.css";
 type Filter = "all" | "problems" | "public" | "stopped";
 type Sort = "name" | "cpu" | "memory";
 
-/** Apps a person should look at: broken or stuck starting, but not ones Umbrel is busy installing or updating. */
-const isProblem = (a: AppSummary) => !a.copyOf && (a.line === "unhealthy" || a.line === "starting") && !umbrelBusy(a.umbrel?.state);
 
 export function AppsView({ initial, initialSort, initialFilter, platform }: { initial: AppSummary[]; initialSort: Sort; initialFilter: Filter; platform: Platform }) {
   const router = useRouter();
@@ -53,11 +52,8 @@ export function AppsView({ initial, initialSort, initialFilter, platform }: { in
   // still a problem here, so every page names the same apps.
   const { data: status } = useApi<StatusPayload>(STATUS_KEY, { refresh: STATUS_REFRESH });
   const findingOf = findingsByApp(status?.findings);
-  const troubleOf = (a: AppSummary) => {
-    const f = a.copyOf ? undefined : findingOf.get(a.id);
-    return trouble(a) ?? (f ? findingWord(f) : null);
-  };
-  const needsHand = (a: AppSummary) => isProblem(a) || (!a.copyOf && findingOf.has(a.id));
+  const markOf = (a: AppSummary) => appMark(a, findingOf.get(a.id));
+  const needsHand = (a: AppSummary) => !!markOf(a);
   const [q, setQ] = React.useState("");
   const term = React.useDeferredValue(q.trim().toLowerCase());
   const [filter, setFilter] = React.useState<Filter>(initialFilter);
@@ -274,6 +270,7 @@ export function AppsView({ initial, initialSort, initialFilter, platform }: { in
 
       {/* The table sizes its columns to this box, not the window, so the sidebar can't push it off the edge. */}
       <div className={s.list}>
+      {apps.length > 0 && (
       <div className={s.toolbar}>
         <label className={s.filter}>
           <Search aria-hidden />
@@ -303,10 +300,25 @@ export function AppsView({ initial, initialSort, initialFilter, platform }: { in
           />
         </span>
       </div>
+      )}
 
       {rows.length === 0 ? (
         <Empty
-          title={term ? `Nothing matches “${q.trim()}”` : filter === "problems" ? "Nothing needs a hand" : filter === "stopped" ? "Nothing is stopped" : filter === "public" ? "Nothing is public" : "No apps yet"}
+          title={
+            term
+              ? `Nothing matches “${q.trim()}”`
+              : filter === "problems"
+                ? "Nothing needs a hand"
+                : filter === "stopped"
+                  ? "Nothing is stopped"
+                  : filter === "public"
+                    ? "Nothing is public"
+                    : platform === "umbrel"
+                      ? "Get one from the app store, or make your own"
+                      : platform === "casaos"
+                        ? "Install one from CasaOS, or make your own"
+                        : "Make one here, or start a Compose stack"
+          }
           action={
             !term && filter === "all" ? (
               <>
@@ -337,11 +349,7 @@ export function AppsView({ initial, initialSort, initialFilter, platform }: { in
                 ? "Stopped apps show up here."
                 : filter === "public"
                   ? "Publish one from Network to reach it away from home."
-                  : platform === "umbrel"
-                    ? "Get one from the app store, or make your own."
-                    : platform === "casaos"
-                      ? "Install one from CasaOS, or make your own."
-                      : "Make one here, or start a Compose stack and it shows up."}
+                  : null}
         </Empty>
       ) : (
         // A filter is used constantly, so its rows swap in place: no remount, no fade.
@@ -370,7 +378,8 @@ export function AppsView({ initial, initialSort, initialFilter, platform }: { in
               a.hidden && "hidden",
             ].filter((t): t is string => !!t);
             const acting = busy.get(a.id);
-            const wrong = acting || busyState || a.moving ? null : troubleOf(a);
+            const mark = acting || busyState || a.moving ? null : markOf(a);
+            const wrong = mark?.word ?? null;
             const menu: MenuEntry[] = [
               { label: "Restart", icon: <Refresh />, onSelect: () => void act(a, "restart"), disabled: !running || busyState },
               running
@@ -433,8 +442,8 @@ export function AppsView({ initial, initialSort, initialFilter, platform }: { in
                       <StateLine state="starting" label={{ start: "Starting…", stop: "Stopping…", restart: "Restarting…" }[acting]} />
                     ) : busyState ? (
                       <UmbrelProgress app={a} />
-                    ) : wrong ? (
-                      <StateLine state="attention" label={wrong} />
+                    ) : mark ? (
+                      <StateLine state={mark.state} label={mark.word} />
                     ) : (
                       <StateLine state={a.line} label={a.copyOf ? (running ? "Old copy, still running" : "Old copy, stopped") : settled?.id === a.id && a.line === "running" ? settled.word : a.summary} />
                     )}
