@@ -326,6 +326,7 @@ function BusyWidget({ item, size }: WidgetProps<BusyConfig>) {
   // Rows that don't fit whole are hidden (never half a row cut off at the bottom of the tile).
   const [listRef, fit] = useFit<HTMLUListElement>(ranked.length);
   if (!data) return error ? <Failed title="Can't show apps" status={error.status} retry={() => void mutate()} /> : <Loading />;
+  if (data.appsUnavailable) return <Failed title="Docker isn't answering" />;
   if (!apps.length) return <WidgetState title="Nothing is running">Apps appear here, busiest first, once they&apos;re started.</WidgetState>;
   if (!usage.size) {
     if (status === "offline") return <Failed title="Live readings stopped" />;

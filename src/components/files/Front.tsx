@@ -114,7 +114,7 @@ function Shelf({ title, state, sort, filter, covers, group, withFolder, empty, l
         <span className={`${s.count} num`}>{state.done && tiles.length ? (state.truncated ? `${tiles.length}+` : tiles.length) : ""}</span>
         {tiles.length > 24 && (
           <Button size="sm" variant="ghost" onClick={() => setAll((a) => !a)}>
-            {all ? "Show fewer" : `See all ${tiles.length}`}
+            {all ? "Show fewer" : "Show more"}
           </Button>
         )}
       </div>

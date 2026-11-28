@@ -60,7 +60,10 @@ function rowSummary(states: TickState[], live: boolean): React.ReactNode {
     );
   }
   const passed = states.filter((x) => x === "ok").length;
-  return passed === states.length ? (states.length === 1 ? "Passed" : `All ${states.length} passed`) : `${passed} of ${states.length} passed`;
+  if (passed === states.length) return states.length === 1 ? "Passed" : `All ${states.length} passed`;
+  // Nothing failed here; what didn't pass was skipped, and "0 of 1 passed" would read as a failure.
+  if (!passed) return "Skipped";
+  return `${passed} passed · ${states.length - passed} skipped`;
 }
 
 export function Sweep({ groups, plan, results, running, live, onOpen }: { groups: CheckupGroup[]; plan: CheckPlanItem[]; results: Map<string, CheckResult>; running: Set<string>; live: boolean; onOpen: (id: string) => void }) {
