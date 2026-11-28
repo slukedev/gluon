@@ -217,8 +217,8 @@ function Row({
             ) : (
               e.appId &&
               !e.isFallback && (
-                <LinkButton size="sm" href={`/apps/${encodeURIComponent(e.appId)}`}>
-                  Open {e.name}
+                <LinkButton size="sm" href={`/apps/${encodeURIComponent(e.appId)}`} aria-label={`Open app: ${e.name}`}>
+                  Open app
                 </LinkButton>
               )
             )}

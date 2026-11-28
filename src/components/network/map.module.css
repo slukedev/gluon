@@ -1,4 +1,5 @@
-.wrap { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+/* Sized by its own box, not the window: beside the sidebar on a small laptop the map has phone room. */
+.wrap { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; container: map / inline-size; }
 .map { margin: 0; padding: 18px 18px 16px; min-width: 0; }
 
 /* Zone labels over the columns they name (desktop only). */
@@ -117,7 +118,7 @@ button.node:active { transform: scale(calc(1 - 0.015 * var(--motion))); transiti
 }
 
 /* Phones and narrow windows: the flow runs top to bottom, the two lanes side by side. */
-@media (max-width: 900px) {
+@container map (max-width: 730px) {
   .map { padding: 16px 14px 14px; }
   .zones { display: none; }
   .grid {
@@ -145,7 +146,7 @@ button.node:active { transform: scale(calc(1 - 0.015 * var(--motion))); transiti
   .splitV { display: block; }
   .lanes { grid-template-columns: 1fr; }
 }
-@media (max-width: 900px) { .direct .nodeTitle, .proxy .nodeTitle { white-space: normal; } }
+@container map (max-width: 730px) { .direct .nodeTitle, .proxy .nodeTitle { white-space: normal; } }
 @media (max-width: 380px) {
   .direct .nodeSub, .proxy .nodeSub { white-space: normal; overflow-wrap: anywhere; }
 }
