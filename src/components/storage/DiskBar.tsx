@@ -166,8 +166,7 @@ export function DiskSegments({ disk, tall }: { disk: DiskView; tall?: boolean })
         {segs.length === 0 ? (
           <span className={s.seg} data-empty="" style={{ left: 0, width: "100%" }}>
             <span className={s.segText}>
-              <span className={s.segName}>{disk.mediaPresent ? "Blank" : "Nothing inserted"}</span>
-              {disk.mediaPresent && <span className={s.segSub}>No partitions</span>}
+              <span className={s.segName}>{disk.mediaPresent ? "No partitions" : "Nothing inserted"}</span>
             </span>
           </span>
         ) : (
