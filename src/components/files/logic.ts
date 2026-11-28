@@ -367,3 +367,10 @@ export function rangeOf(a: number, b: number): number[] {
   const lo = Math.min(a, b);
   return Array.from({ length: Math.abs(a - b) + 1 }, (_, i) => lo + i);
 }
+
+/** Counts lines only as far as `max`, so a megabyte file isn't split on every keystroke. */
+export function linesUpTo(text: string, max: number): number {
+  let n = 1;
+  for (let i = text.indexOf("\n"); i >= 0 && n < max; i = text.indexOf("\n", i + 1)) n++;
+  return n;
+}

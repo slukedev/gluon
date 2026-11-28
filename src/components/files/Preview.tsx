@@ -14,6 +14,7 @@ import { toast } from "@/components/ui/Toast";
 import { Segmented } from "@/components/ui/Field";
 import { Markdown } from "./Markdown";
 import type { CodeLanguage } from "@/components/code/languages";
+import { linesUpTo } from "./logic";
 import { KIND_LABEL, KindIcon, THUMBABLE, downloadUrl, isArchive, rawUrl, thumbUrl, useMediaQuery } from "./lib";
 import s from "./files.module.css";
 
@@ -250,13 +251,6 @@ function ImagePreview({ entry }: { entry: FileEntry }) {
 
 function thumbBg(entry: FileEntry): React.CSSProperties | undefined {
   return THUMBABLE.test(entry.name) ? { backgroundImage: `url("${thumbUrl(entry, 480)}")`, backgroundSize: "contain", backgroundRepeat: "no-repeat", backgroundPosition: "center" } : undefined;
-}
-
-/** Counts lines only as far as `max`, so a megabyte file isn't split on every keystroke. */
-function linesUpTo(text: string, max: number): number {
-  let n = 1;
-  for (let i = text.indexOf("\n"); i >= 0 && n < max; i = text.indexOf("\n", i + 1)) n++;
-  return n;
 }
 
 function langOf(t: TextFile | undefined): CodeLanguage {

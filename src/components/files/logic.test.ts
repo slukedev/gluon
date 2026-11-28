@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Place, Places } from "@/lib/files-types";
-import { columnsFor, commandIds, fullness, groupPlaces, matches, parseCommand, planUpload, rangeOf, rankCompletions, rememberView, sortItems, splitTypedPath, timeKind, toggleWord, uploadTops, viewFor, type CommandContext } from "./logic";
+import { columnsFor, commandIds, linesUpTo, fullness, groupPlaces, matches, parseCommand, planUpload, rangeOf, rankCompletions, rememberView, sortItems, splitTypedPath, timeKind, toggleWord, uploadTops, viewFor, type CommandContext } from "./logic";
 
 describe("parseCommand", () => {
   it("reads a path, actions and an empty bar", () => {
@@ -203,5 +203,16 @@ describe("rangeOf", () => {
   it("covers both ends either way round", () => {
     expect(rangeOf(5, 2)).toEqual([2, 3, 4, 5]);
     expect(rangeOf(3, 3)).toEqual([3]);
+  });
+});
+
+describe("linesUpTo", () => {
+  it("counts lines, stopping at the cap", () => {
+    expect(linesUpTo("", 40)).toBe(1);
+    expect(linesUpTo("one", 40)).toBe(1);
+    expect(linesUpTo("one\ntwo\n", 40)).toBe(3);
+    expect(linesUpTo("\r\n\r\n", 40)).toBe(3);
+    expect(linesUpTo("x\n".repeat(100_000), 40)).toBe(40);
+    expect(linesUpTo("a\nb\nc", 2)).toBe(2);
   });
 });
