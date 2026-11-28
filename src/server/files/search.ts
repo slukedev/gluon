@@ -202,14 +202,31 @@ export async function runSearchMany(user: User, roots: string[], q: Omit<SearchQ
   return { count, truncated, timedOut };
 }
 
+/** Each search walks the disk for up to 30 s, so one person can't keep more than a few going. */
+const SEARCHES_PER_PERSON = 4;
+type G = typeof globalThis & { __gluonFileSearches?: Map<string, number> };
+const runningSearches = ((globalThis as G).__gluonFileSearches ??= new Map<string, number>());
+
 /** Sends "hits" { items } batches, then "done" { count, truncated, timedOut }. */
 export function searchStream(req: NextRequest, user: User, roots: string[], q: Omit<SearchQuery, "path">): Response {
   return sse(req, async (send, close) => {
+    const n = runningSearches.get(user.id) ?? 0;
+    if (n >= SEARCHES_PER_PERSON) {
+      send("error", { message: "A few searches are still running. Wait a moment, then search again." });
+      close();
+      return;
+    }
+    runningSearches.set(user.id, n + 1);
     const ctrl = new AbortController();
     void runSearchMany(user, roots, q, (items) => send("hits", { items }), ctrl.signal)
       .then((r) => send("done", r))
       .catch((e: unknown) => send("error", { message: e instanceof AppError ? e.message : "The search stopped. Try again." }))
-      .finally(close);
+      .finally(() => {
+        const left = (runningSearches.get(user.id) ?? 1) - 1;
+        if (left > 0) runningSearches.set(user.id, left);
+        else runningSearches.delete(user.id);
+        close();
+      });
     return () => ctrl.abort();
   });
 }
