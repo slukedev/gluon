@@ -1,5 +1,6 @@
 import type { Browser, Page, TestInfo } from "@playwright/test";
-import { expect, newContext, newPerson, open, openAccountMenu, ownAddress, signedOut, signIn, test, uniqueName } from "./fixtures";
+import { Secret, TOTP } from "otpauth";
+import { expect, hydrated, newContext, newPerson, open, openAccountMenu, ownAddress, signedOut, signIn, test, uniqueName } from "./fixtures";
 
 test.use({ storageState: signedOut, extraHTTPHeaders: async ({}, use, testInfo) => use(ownAddress(testInfo)) });
 
@@ -9,6 +10,23 @@ async function account(browser: Browser, testInfo: TestInfo, role: "member" | "a
   const person = { name: "Alex Rivera", username: uniqueName(testInfo, "alex"), password: "alex's long password", role };
   await (await newPerson(browser, testInfo, person)).close();
   return person;
+}
+
+/** An account with two-step sign-in on, and a way to read its authenticator. */
+async function accountWithCode(browser: Browser, testInfo: TestInfo) {
+  const person = { name: "Alex Rivera", username: uniqueName(testInfo, "alex"), password: "alex's long password" };
+  const ctx = await newPerson(browser, testInfo, person);
+  const reauth = await ctx.request.post("/api/auth/reauth", { data: { password: person.password } });
+  expect(reauth.ok(), await reauth.text()).toBe(true);
+  const begin = await ctx.request.post("/api/me/mfa", { data: { action: "begin" } });
+  expect(begin.ok(), await begin.text()).toBe(true);
+  const { secret, ticket } = (await begin.json()) as { secret: string; ticket: string };
+  const totp = new TOTP({ algorithm: "SHA1", digits: 6, period: 30, secret: Secret.fromBase32(secret) });
+  const confirm = await ctx.request.post("/api/me/mfa", { data: { action: "confirm", secret, ticket, code: totp.generate() } });
+  expect(confirm.ok(), await confirm.text()).toBe(true);
+  await ctx.close();
+  // Enrolment used the current step and a code works once, so sign-in takes the next one, inside the accepted drift.
+  return { ...person, nextCode: () => totp.generate({ timestamp: Date.now() + 30_000 }) };
 }
 
 function signInResponse(page: Page) {
@@ -25,6 +43,55 @@ test("a wrong password is refused with a message, and the right one signs in", a
   await signIn(page, me.username, me.password);
   await expect(page.getByRole("heading", { level: 1, name: "Home" })).toBeVisible();
   await expect(page.getByRole("heading", { level: 2, name: /, Alex\.$/ })).toBeVisible();
+});
+
+test("a code pasted with a space in the middle keeps all six digits and signs in", async ({ page, context, browser }, testInfo) => {
+  const me = await accountWithCode(browser, testInfo);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await open(page, "/login");
+  await signIn(page, me.username, me.password);
+  await expect(page.getByRole("heading", { level: 1, name: "Enter your code" })).toBeVisible();
+
+  const code = me.nextCode();
+  await page.evaluate((text) => navigator.clipboard.writeText(text), `${code.slice(0, 3)} ${code.slice(3)}`);
+  const sent = page.waitForRequest((r) => r.url().endsWith("/api/auth/mfa") && r.method() === "POST", { timeout: 10_000 });
+  const box = page.getByLabel("6-digit code");
+  await expect(box).toBeFocused();
+  await page.keyboard.press("ControlOrMeta+V");
+  // A full paste submits by itself; nothing is pressed after it.
+  expect((await sent).postDataJSON()).toEqual({ code });
+  await expect(page.getByRole("heading", { level: 1, name: "Home" })).toBeVisible();
+});
+
+test("a reload while the code is asked for stays on the code, and Start over really starts over", async ({ page, browser }, testInfo) => {
+  const me = await accountWithCode(browser, testInfo);
+  await open(page, "/login");
+  await signIn(page, me.username, me.password);
+  const codeStep = page.getByRole("heading", { level: 1, name: "Enter your code" });
+  await expect(codeStep).toBeVisible();
+
+  await page.reload();
+  await hydrated(page);
+  await expect(codeStep).toBeVisible();
+  await expect(page.getByLabel("Username")).toHaveCount(0);
+
+  // The half-finished sign-in is dropped on the server, so a reload now asks for the password.
+  const dropped = page.waitForResponse((r) => r.url().endsWith("/api/auth/logout") && r.ok());
+  await page.getByRole("button", { name: "Start over" }).click();
+  await expect(page.getByLabel("Username")).toBeVisible();
+  await dropped;
+  await page.reload();
+  await hydrated(page);
+  await expect(page.getByRole("heading", { level: 1, name: /^Sign in to / })).toBeVisible();
+  await expect(codeStep).toHaveCount(0);
+
+  await signIn(page, me.username, me.password);
+  await expect(codeStep).toBeVisible();
+  await page.reload();
+  await hydrated(page);
+  await expect(page.getByLabel("6-digit code")).toBeFocused();
+  await page.keyboard.type(me.nextCode());
+  await expect(page.getByRole("heading", { level: 1, name: "Home" })).toBeVisible();
 });
 
 test("an inner page asks a signed-out visitor to sign in", async ({ page }) => {
