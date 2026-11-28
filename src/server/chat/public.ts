@@ -1,4 +1,5 @@
 import "server-only";
+import { addressBucket } from "../auth/ratelimit";
 import { chatApps, chatTarget, peekInvite } from "./backend";
 
 /**
@@ -11,7 +12,8 @@ const g = globalThis as G;
 const WINDOW = 10 * 60_000;
 const LIMIT = 30;
 
-function allowed(ip: string): boolean {
+function allowed(address: string): boolean {
+  const ip = addressBucket(address);
   const m = (g.__gluonChatInviteLookups ??= new Map());
   const now = Date.now();
   const recent = (m.get(ip) ?? []).filter((t: number) => now - t < WINDOW);

@@ -7,7 +7,7 @@ import { currentAuth, hasRecentAuth, mustSetUpMfa, pendingAuth, type Session } f
 import { mfaRequiredMessage } from "./auth/policy";
 import type { User } from "./auth/users";
 import { clientInfo, type Zone } from "./net-zone";
-import { burst as burstLimit, waitText } from "./auth/ratelimit";
+import { addressBucket, burst as burstLimit, waitText } from "./auth/ratelimit";
 
 type AuthLevel = "public" | "user" | "admin";
 
@@ -137,7 +137,7 @@ export function route<B, Q>(opts: Options<B, Q>, fn: Handler<B, Q> | PublicHandl
       }
       const { ip, zone } = clientInfo(req.headers);
       if (opts.burst) {
-        const wait = burstLimit(`${req.nextUrl.pathname}:${ip}`, opts.burst.limit, opts.burst.windowMs);
+        const wait = burstLimit(`${req.nextUrl.pathname}:${addressBucket(ip)}`, opts.burst.limit, opts.burst.windowMs);
         if (wait > 0) return errorResponse("rate_limited", `Too many requests. Try again in ${waitText(wait)}.`, 429, { retryAfter: wait });
       }
 

@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gluon-rl-"));
 vi.stubEnv("GLUON_DATA", dataDir);
 const db = await import("@/server/db");
-const { burst, clearThrottle, guard, oneAtATime, pruneAttempts, recordAttempt, retryAfter, waitText } =
+const { addressBucket, burst, clearThrottle, guard, oneAtATime, pruneAttempts, recordAttempt, retryAfter, waitText } =
   await import("./ratelimit");
 
 const T0 = new Date("2026-11-08T10:00:00Z");
@@ -122,6 +122,13 @@ describe("IP caps", () => {
     expect(retryAfter("login:fresh", AWAY_IP)).toBe(0);
   });
 
+  it("counts a whole IPv6 /64 as one address, however it is written", () => {
+    for (let i = 0; i < 30; i++) recordAttempt(`login:v6${i}`, `2001:db8:1:2::${(i + 1).toString(16)}`, false, "away");
+    expect(retryAfter("login:fresh", "2001:0db8:0001:0002:ffff:0:0:9", "away")).toBe(900);
+    expect(retryAfter("login:fresh", "[2001:db8:1:2:abcd::1]:443", "away")).toBe(900);
+    expect(retryAfter("login:fresh", "2001:db8:1:3::1", "away")).toBe(0);
+  });
+
   it("blocks an away IP after 100 failures in a day, but only for away checks", () => {
     // One a minute keeps every 15-minute window well under 30.
     for (let i = 0; i < 99; i++) {
@@ -223,10 +230,34 @@ describe("burst", () => {
     expect(burst(key, 2, 10_000)).toBe(1);
   });
 
+  it("forgets the least recently used keys first once it holds too many", () => {
+    expect(burst("burst:kept", 1, 60_000)).toBe(0);
+    for (let i = 0; i < 4998; i++) burst(`burst:filler${i}`, 1, 60_000);
+    expect(burst("burst:kept", 1, 60_000)).toBe(60);
+    for (let i = 0; i < 4999; i++) burst(`burst:flood${i}`, 1, 60_000);
+    expect(burst("burst:filler0", 1, 60_000)).toBe(0);
+    expect(burst("burst:kept", 1, 60_000)).toBe(0);
+  });
+
   it("keeps keys independent", () => {
     expect(burst("burst:a-indep", 1, 60_000)).toBe(0);
     expect(burst("burst:a-indep", 1, 60_000)).toBe(60);
     expect(burst("burst:b-indep", 1, 60_000)).toBe(0);
+  });
+});
+
+describe("addressBucket", () => {
+  it.each([
+    ["203.0.113.7", "203.0.113.7"],
+    ["::ffff:203.0.113.7", "203.0.113.7"],
+    ["2001:db8::1", "2001:db8:0:0::/64"],
+    ["2001:DB8:0:0:8:800:200C:417A", "2001:db8:0:0::/64"],
+    ["fe80::1%eth0", "fe80:0:0:0::/64"],
+    ["2001:db8:aa:bb::7.8.9.10", "2001:db8:aa:bb::/64"],
+    ["::1", "0:0:0:0::/64"],
+    ["unknown", "unknown"],
+  ])("puts %s in %s", (ip, bucket) => {
+    expect(addressBucket(ip)).toBe(bucket);
   });
 });
 
