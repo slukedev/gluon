@@ -27,6 +27,7 @@
 }
 .tab[data-active] { color: var(--ink); }
 .tab[data-disabled] { opacity: 0.45; cursor: not-allowed; }
+.tab:active:not([data-disabled]) { color: var(--ink); transition-duration: 0ms; }
 @media (hover: hover) and (pointer: fine) { .tab:hover:not([data-disabled]) { color: var(--ink); } }
 @media (pointer: coarse) { .tab { height: 44px; } }
 .indicator {

@@ -16,6 +16,7 @@
   transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease;
 }
 .trigger[data-disabled] { opacity: 0.5; cursor: not-allowed; }
+.trigger:active:not([data-disabled]) { color: var(--ink); background: var(--panel-2); transition-duration: 0ms; }
 @media (hover: hover) and (pointer: fine) {
   .trigger:hover:not([data-disabled]) { color: var(--ink); }
 }
