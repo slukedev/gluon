@@ -1,6 +1,6 @@
 import "server-only";
 import fs from "node:fs";
-import { filesystems, sampleFilesystems, history, REMOTE_FS, type FsUsage } from "../../metrics/sampler";
+import { filesystems, sampleFilesystems, history, statfsWithin, REMOTE_FS, type FsUsage } from "../../metrics/sampler";
 import { getInventoryState, type InventoryState } from "../../storage/inventory";
 import { notPersistent } from "../../storage/ops";
 import { hostPath } from "../../host/paths";
@@ -70,32 +70,40 @@ function spaceCheck(mount: string): CheckSpec {
   };
 }
 
+const INODE_READ_MS = 3000;
+
 /** Running out of inodes looks like "disk full" with space left. */
-export function inodeOutcome(list: FsUsage[]): Outcome {
+export async function inodeOutcome(list: FsUsage[], statfs: (p: string) => Promise<fs.StatsFs | null> = (p) => statfsWithin(p, INODE_READ_MS)): Promise<Outcome> {
   const rows: [string, string][] = [];
   const high: { mount: string; pct: number }[] = [];
   let unread = 0;
   let checked = 0;
-  for (const f of list) {
-    // A share whose server went away would block statfs (and the whole process) for good.
-    if (REMOTE_FS.has(f.fstype)) {
+  // Read side by side and off the event loop: a mount that hangs costs its own row, not the whole check.
+  const reads = list.map((f) => (REMOTE_FS.has(f.fstype) ? null : statfs(hostPath(f.mount)).then((s) => ({ s }), () => ({ s: undefined }))));
+  for (const [i, f] of list.entries()) {
+    if (!reads[i]) {
       rows.push([f.mount, "network share, not checked"]);
       continue;
     }
-    try {
-      const s = fs.statfsSync(hostPath(f.mount));
-      if (!s.files) {
-        rows.push([f.mount, "no inode limit"]);
-        continue;
-      }
-      checked++;
-      const pct = ((s.files - s.ffree) / s.files) * 100;
-      rows.push([f.mount, `${(s.files - s.ffree).toLocaleString("en-US")} of ${s.files.toLocaleString("en-US")} (${pct.toFixed(1)}%)`]);
-      if (pct >= 85) high.push({ mount: f.mount, pct });
-    } catch {
+    const { s } = await reads[i];
+    if (s === null) {
+      rows.push([f.mount, "didn't answer"]);
+      unread++;
+      continue;
+    }
+    if (!s) {
       rows.push([f.mount, "unreadable"]);
       unread++;
+      continue;
     }
+    if (!s.files) {
+      rows.push([f.mount, "no inode limit"]);
+      continue;
+    }
+    checked++;
+    const pct = ((s.files - s.ffree) / s.files) * 100;
+    rows.push([f.mount, `${(s.files - s.ffree).toLocaleString("en-US")} of ${s.files.toLocaleString("en-US")} (${pct.toFixed(1)}%)`]);
+    if (pct >= 85) high.push({ mount: f.mount, pct });
   }
   const evidence = kv(rows);
   if (!rows.length) return skip("No filesystems to check");
@@ -178,7 +186,7 @@ export function readOnlyOutcome(s: InventoryState): Outcome {
 
 export async function storageChecks(): Promise<CheckSpec[]> {
   const specs: CheckSpec[] = realFilesystems().map((f) => spaceCheck(f.mount));
-  specs.push({ id: "storage.inodes", group: "storage", label: "Room for new files", run: async () => inodeOutcome(realFilesystems()) });
+  specs.push({ id: "storage.inodes", group: "storage", label: "Room for new files", run: () => inodeOutcome(realFilesystems()) });
   let disks: DiskView[] = [];
   try {
     disks = (await getInventoryState()).view.disks.filter((d) => d.mediaPresent);

@@ -10,7 +10,7 @@ const dir = vi.hoisted(() => {
 });
 
 import { all, run } from "../db";
-import { rollup, unescapeMount } from "./sampler";
+import { answersSlowly, rollup, statfsWithin, unescapeMount } from "./sampler";
 
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
@@ -19,6 +19,41 @@ describe("unescapeMount", () => {
     expect(unescapeMount("/srv/My\\040Films")).toBe("/srv/My Films");
     expect(unescapeMount("/mnt/tab\\011and\\134slash")).toBe("/mnt/tab\tand\\slash");
     expect(unescapeMount("/plain")).toBe("/plain");
+  });
+});
+
+describe("filesystems that can hang", () => {
+  it("never reads FUSE or network filesystems on the event loop", () => {
+    for (const t of ["fuseblk", "fuse.sshfs", "fuse.rclone", "nfs4", "cifs"]) expect(answersSlowly(t)).toBe(true);
+    for (const t of ["ext4", "xfs", "btrfs", "vfat", "exfat", "ntfs3"]) expect(answersSlowly(t)).toBe(false);
+  });
+
+  it("gives up on a hung mount, and doesn't stack a second read behind the stuck one", async () => {
+    vi.useFakeTimers();
+    const pending: ((err: NodeJS.ErrnoException | null, s: fs.StatsFs) => void)[] = [];
+    const spy = vi.spyOn(fs, "statfs").mockImplementation(((_p: string, cb: (err: NodeJS.ErrnoException | null, s: fs.StatsFs) => void) => void pending.push(cb)) as typeof fs.statfs);
+    try {
+      const first = statfsWithin("/media/usb", 3000);
+      await vi.advanceTimersByTimeAsync(3000);
+      await expect(first).resolves.toBeNull();
+      await expect(statfsWithin("/media/usb", 3000)).resolves.toBeNull();
+      expect(pending).toHaveLength(1);
+      // Once the daemon answers, the next read goes through again.
+      pending[0]!(null, { files: 10 } as fs.StatsFs);
+      const again = statfsWithin("/media/usb", 3000);
+      pending[1]!(null, { files: 20 } as fs.StatsFs);
+      await expect(again).resolves.toMatchObject({ files: 20 });
+    } finally {
+      spy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports a read error as an error, not as a timeout", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gluon-statfs-"));
+    await expect(statfsWithin(tmp, 3000)).resolves.toMatchObject({ bsize: expect.any(Number) });
+    await expect(statfsWithin(path.join(tmp, "gone"), 3000)).rejects.toMatchObject({ code: "ENOENT" });
+    fs.rmSync(tmp, { recursive: true });
   });
 });
 

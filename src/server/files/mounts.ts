@@ -140,7 +140,7 @@ export function containerToHost(p: string, near?: string): string | null {
  * process), so network and FUSE filesystems are only read in the background: a recent answer is
  * used, a stuck or old one reads as unknown.
  */
-const REMOTE = /^(nfs4?|cifs|smb3|smbfs|9p|ceph|glusterfs|davfs|fuse(\..+)?)$/;
+const REMOTE = /^(nfs4?|cifs|smb3|smbfs|9p|ceph|glusterfs|davfs|fuse(blk|\..+)?)$/;
 const REMOTE_STALE_MS = 5 * 60_000;
 export const isRemoteFs = (t: string) => REMOTE.test(t);
 interface Space {

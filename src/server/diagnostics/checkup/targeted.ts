@@ -705,7 +705,7 @@ function spacePlan(): Plan {
     },
   });
   specs.push({ id: "system.docker", group: g, label: "Docker", run: dockerDiskOutcome });
-  specs.push({ id: "storage.inodes", group: g, label: "Room for new files", run: async () => inodeOutcome(realFilesystems()) });
+  specs.push({ id: "storage.inodes", group: g, label: "Room for new files", run: () => inodeOutcome(realFilesystems()) });
   return { title: "Running out of space", layout: "sweep", origin: null, groups: [{ id: g, label: "Space" }], specs, subject: null };
 }
 

@@ -241,11 +241,32 @@ export async function sampleContainers(): Promise<ContainerSample[]> {
 }
 
 const REAL_FS = new Set(["ext4", "ext3", "ext2", "xfs", "btrfs", "zfs", "vfat", "exfat", "ntfs", "ntfs3", "fuseblk", "f2fs", "nfs", "nfs4", "cifs", "smb3", "fuse.mergerfs", "fuse.sshfs"]);
-// statfs on a hard-mounted share whose server is gone blocks forever, so these are never read
-// synchronously: a background read fills `remote` and a stuck one is simply left pending.
 export const REMOTE_FS = new Set(["nfs", "nfs4", "cifs", "smb3", "fuse.sshfs", "fuse.mergerfs"]);
+// statfs on a hard-mounted share whose server is gone, or on a FUSE mount whose daemon hung (an NTFS
+// stick pulled mid-write), blocks forever. These are never read synchronously: a background read
+// fills `remote` and a stuck one is simply left pending.
+export const answersSlowly = (fstype: string) => REMOTE_FS.has(fstype) || fstype === "fuseblk" || fstype.startsWith("fuse.");
 const REMOTE_STALE_MS = 5 * 60_000;
 const remote = new Map<string, { at: number; size: number; used: number; avail: number; pending: boolean }>();
+
+const inFlight = new Set<string>();
+/**
+ * statfs off the event loop, giving up after `ms`. Resolves null when it timed out, or when an earlier
+ * read of the same path is still stuck: a hung mount holds at most one worker thread, never more.
+ */
+export function statfsWithin(p: string, ms: number): Promise<fs.StatsFs | null> {
+  if (inFlight.has(p)) return Promise.resolve(null);
+  inFlight.add(p);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    fs.statfs(p, (err, s) => {
+      inFlight.delete(p);
+      clearTimeout(timer);
+      if (err) reject(err);
+      else resolve(s);
+    });
+  });
+}
 
 export const unescapeMount = (s: string) => s.replace(/\\([0-7]{3})/g, (_, o: string) => String.fromCharCode(parseInt(o, 8)));
 
@@ -262,7 +283,10 @@ function remoteUsage(mount: string) {
     fs.statfs(hostPath(mount), (err, sfs) => {
       r.pending = false;
       if (err) return void (r.at = 0);
+      const first = !r.at;
       Object.assign(r, usage(sfs), { at: Date.now() });
+      // A drive that just appeared shows now, not at the next minute's sample.
+      if (first) sampleFilesystems();
     });
   }
   // Only a recent answer counts; a share that stopped answering drops out instead of showing old numbers.
@@ -283,7 +307,7 @@ export function sampleFilesystems(): FsUsage[] {
     if (seen.has(key)) continue;
     seen.add(key);
     try {
-      const u = REMOTE_FS.has(fstype) ? remoteUsage(mount) : usage(fs.statfsSync(hostPath(mount)));
+      const u = answersSlowly(fstype) ? remoteUsage(mount) : usage(fs.statfsSync(hostPath(mount)));
       if (!u) continue;
       const { size, used, avail } = u;
       out.push({ mount, device, fstype, size, used, avail, pct: used + avail > 0 ? (used / (used + avail)) * 100 : 0 });
