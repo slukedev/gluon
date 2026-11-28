@@ -8,6 +8,7 @@ import { usePrefs, useFormat } from "@/components/PrefsProvider";
 import { Select } from "@/components/ui/Select";
 import { Segmented, Checkbox } from "@/components/ui/Field";
 import { Button, IconButton } from "@/components/ui/Button";
+import { anchorAt, reanchor, type Anchor } from "./logAnchor";
 import s from "./logs.module.css";
 
 const MAX = 20_000;
@@ -60,7 +61,10 @@ function highlight(text: string, q: string): React.ReactNode {
 
 interface Row extends LogLine {
   plain: string;
+  seq: number;
 }
+
+let nextSeq = 0;
 
 export function LogViewer({ appId, containers, initialContainer }: { appId: string; containers: { name: string; label: string }[]; initialContainer: string | null }) {
   const { prefs, setPrefs } = usePrefs();
@@ -92,7 +96,7 @@ export function LogViewer({ appId, containers, initialContainer }: { appId: stri
     setCursor(null);
   }
 
-  const toRows = (d: unknown) => (d as LogLine[]).map((l) => ({ ...l, plain: stripAnsi(l.text) }));
+  const toRows = (d: unknown) => (d as LogLine[]).map((l) => ({ ...l, plain: stripAnsi(l.text), seq: nextSeq++ }));
   const status = useStream(
     url,
     {
@@ -125,6 +129,7 @@ export function LogViewer({ appId, containers, initialContainer }: { appId: stri
 
   const v = useVirtualizer({
     count: visible.length,
+    getItemKey: (i) => visible[i]!.seq,
     getScrollElement: () => parent.current,
     estimateSize: () => 20,
     overscan: 30,
@@ -140,6 +145,20 @@ export function LogViewer({ appId, containers, initialContainer }: { appId: stri
   React.useEffect(() => {
     if (follow && visible.length) v.scrollToIndex(visible.length - 1, { align: "end" });
   }, [visible.length, follow, v]);
+
+  // Past the cap the oldest lines go. Someone reading further up keeps the same line at the same height.
+  const anchor = React.useRef<Anchor | null>(null);
+  React.useLayoutEffect(() => {
+    const el = parent.current;
+    if (!el) return;
+    v.getVirtualItems();
+    const moved = followRef.current ? null : reanchor(anchor.current, visible, v.measurementsCache);
+    if (moved) {
+      el.scrollTop += moved.scrollBy;
+      setCursor((c) => (c === null ? c : c + moved.shift >= 0 ? c + moved.shift : null));
+    }
+    anchor.current = anchorAt(visible, v.measurementsCache, el.scrollTop);
+  });
 
   const onScroll = () => {
     const el = parent.current;
