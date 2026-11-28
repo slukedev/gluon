@@ -151,7 +151,8 @@ export function ServiceJournal({ unit }: { unit: string }) {
     a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
     a.download = `${unit.replace(/\.service$/, "")}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.log`;
     a.click();
-    URL.revokeObjectURL(a.href);
+    const href = a.href;
+    setTimeout(() => URL.revokeObjectURL(href), 1000);
   }
 
   const showIdent = React.useMemo(() => new Set(entries.slice(-200).map((e) => e.identifier)).size > 1, [entries]);
