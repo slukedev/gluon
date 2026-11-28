@@ -156,10 +156,19 @@ export const Browser = React.memo(function Browser() {
 
   const focusCol = (col: number) => requestAnimationFrame(() => colRefs.current.get(col)?.focus({ preventScroll: true }));
 
+  // End, PageDown or type-to-select in a big folder can land on a row whose page hasn't loaded yet.
+  const pendingPick = React.useRef<{ folder: string; i: number; ev: Pick; navigate: boolean } | null>(null);
   const choose = (col: number, i: number, ev: Pick = {}, navigate = true) => {
     const rows = rowsOf(col);
     const e = rows[i];
-    if (!e) return;
+    if (!e) {
+      const folder = folders[col];
+      if (folder === undefined || i < 0 || i >= rows.length) return;
+      pendingPick.current = { folder, i, ev, navigate };
+      ensures.current.get(folder)?.(i);
+      return;
+    }
+    pendingPick.current = null;
     setOnPlaces(false);
     if (ev.shiftKey || ev.metaKey || ev.ctrlKey) {
       const base = sel.col === col ? sel.paths : new Set<string>();
@@ -189,6 +198,9 @@ export const Browser = React.memo(function Browser() {
     else if (folders[col] !== deepest) f.go(folders[col]!, { replace: true });
     if (phone && !isDirLike(e)) setPhonePreview(true);
   };
+
+  const chooseRef = React.useRef(choose);
+  chooseRef.current = choose;
 
   const toggle = (col: number, i: number) => {
     const e = rowsOf(col)[i];
@@ -326,6 +338,11 @@ export const Browser = React.memo(function Browser() {
         setSel({ col, paths: new Set([rows[0].path]), focus: 0, anchor: 0 });
       }
       ensures.current.set(folder, ensure);
+      const pick = pendingPick.current;
+      if (pick?.folder === folder && col >= 0 && rows[pick.i]) {
+        pendingPick.current = null;
+        chooseRef.current(col, pick.i, pick.ev, pick.navigate);
+      }
       if (listing) tryReveal(folder);
       bump();
     },
