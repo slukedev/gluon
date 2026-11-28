@@ -2,6 +2,7 @@ import "server-only";
 import { all, now, one, run, tx } from "./db";
 import { id as newId } from "./crypto";
 import { badRequest } from "./errors";
+import { safeNext } from "@/lib/safe-next";
 
 export type PinKind = "folder" | "app" | "page" | "link";
 export interface Pin {
@@ -18,7 +19,28 @@ export function listPins(userId: string, kind?: PinKind): Pin[] {
     : all<Pin>("SELECT id, kind, target, label, position FROM pins WHERE user_id = ? ORDER BY kind, position", userId);
 }
 
-export function addPin(userId: string, kind: PinKind, target: string, label: string): Pin {
+/** Pins become sidebar links: a page stays on this server and a link is a web address, never a script. */
+function pinTarget(kind: PinKind, raw: string): string {
+  if (kind === "page") {
+    const page = safeNext(raw, "");
+    if (!page) throw badRequest("Pin a page on this server.");
+    return page;
+  }
+  if (kind === "link") {
+    let u: URL;
+    try {
+      u = new URL(raw);
+    } catch {
+      throw badRequest("Pin a web address that starts with http:// or https://.");
+    }
+    if (u.protocol !== "https:" && u.protocol !== "http:") throw badRequest("Pin a web address that starts with http:// or https://.");
+    return u.toString();
+  }
+  return raw;
+}
+
+export function addPin(userId: string, kind: PinKind, rawTarget: string, label: string): Pin {
+  const target = pinTarget(kind, rawTarget);
   const existing = one<Pin>("SELECT id, kind, target, label, position FROM pins WHERE user_id = ? AND kind = ? AND target = ?", userId, kind, target);
   if (existing) return existing;
   const count = one<{ n: number }>("SELECT COUNT(*) AS n FROM pins WHERE user_id = ?", userId)?.n ?? 0;
