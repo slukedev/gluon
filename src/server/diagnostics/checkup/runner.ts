@@ -6,7 +6,7 @@ import { getFinding } from "../../findings";
 import { listApps, type AppSummary } from "../../docker/apps";
 import type { User } from "../../auth/users";
 import { plural } from "@/lib/format";
-import type { CheckPlanItem, CheckResult, CheckState, CheckupEvent, CheckupKind, CheckupMeta, CheckupRun, CheckupRunRow, CheckupSummary } from "@/lib/diagnostics-types";
+import { skipCounts, type CheckPlanItem, type CheckResult, type CheckState, type CheckupEvent, type CheckupKind, type CheckupMeta, type CheckupRun, type CheckupRunRow, type CheckupSummary } from "@/lib/diagnostics-types";
 import { limiter, skip, withTimeout, type CheckCtx, type CheckSpec, type Outcome } from "./core";
 import { internetChecks } from "./internet";
 import { addressChecks } from "./addresses";
@@ -95,7 +95,7 @@ function broadcast(a: Active, e: CheckupEvent) {
 }
 
 /** Offer the same fix Status shows when an open finding matches. */
-function finalize(spec: CheckSpec, out: Outcome, took: number): CheckResult {
+function finalize(spec: CheckSpec, out: Outcome, took: number, unrun: boolean): CheckResult {
   const { findings, ...rest } = out;
   let fix = rest.fix ?? null;
   if ((rest.state === "fail" || rest.state === "warn") && findings?.length) {
@@ -108,7 +108,7 @@ function finalize(spec: CheckSpec, out: Outcome, took: number): CheckResult {
     }
   }
   if (rest.state === "ok" || rest.state === "skip") fix = rest.state === "skip" ? (rest.fix ?? null) : null;
-  return { id: spec.id, state: rest.state, title: rest.title, detail: rest.detail ?? null, value: rest.value ?? null, evidence: rest.evidence ?? null, fix, ms: Math.round(took) };
+  return { id: spec.id, state: rest.state, title: rest.title, detail: rest.detail ?? null, value: rest.value ?? null, evidence: rest.evidence ?? null, fix, ms: Math.round(took), ...(unrun && { unrun: true }) };
 }
 
 export function countStates(results: CheckResult[]): Record<CheckState, number> {
@@ -117,14 +117,15 @@ export function countStates(results: CheckResult[]): Record<CheckState, number> 
   return c;
 }
 
-export function verdictFor(meta: CheckupMeta, plan: CheckPlanItem[], results: CheckResult[], status: CheckupSummary["status"], unchecked = 0): string {
+export function verdictFor(meta: CheckupMeta, plan: CheckPlanItem[], results: CheckResult[], status: CheckupSummary["status"]): string {
   const c = countStates(results);
   if (status === "cancelled") return `Stopped after ${results.length} of ${plan.length} checks.`;
   if (status === "failed") return "The checkup couldn't finish.";
   // Probes that errored or timed out say nothing either way, so they never count as "checks out".
-  const left = unchecked ? ` ${plural(unchecked, "check")} couldn't run.` : "";
+  const { unrun } = skipCounts(results);
+  const left = unrun ? ` ${plural(unrun, "check")} couldn't run.` : "";
   const body = verdictBody(meta, plan, results, c);
-  return unchecked && body === "Everything checks out." ? `Everything that ran checks out.${left}` : body + left;
+  return unrun && body === "Everything checks out." ? `Everything that ran checks out.${left}` : body + left;
 }
 
 function verdictBody(meta: CheckupMeta, plan: CheckPlanItem[], results: CheckResult[], c: Record<CheckState, number>): string {
@@ -158,24 +159,24 @@ async function execute(a: Active) {
       return memo.get(k) as Promise<T>;
     },
   };
-  const unchecked = new Set<string>();
   const runOne = async (spec: CheckSpec) => {
     if (signal.aborted) return;
     a.running.add(spec.id);
     broadcast(a, { type: "begin", id: spec.id });
     const t0 = performance.now();
     let out: Outcome;
+    let unrun = false;
     try {
       out = await withTimeout(spec.run(ctx), spec.timeoutMs ?? 30_000, "timeout");
     } catch (e) {
       const msg = (e as Error).message;
       out = msg === "timeout" ? skip(`${spec.label}: didn't finish in time`, { detail: "The probe took too long, so it was left out. Try again in a minute." }) : skip(`${spec.label}: couldn't be checked`, { detail: msg.slice(0, 300) });
       if (msg !== "timeout") console.error(`[gluon] checkup ${spec.id} failed`, e);
-      unchecked.add(spec.id);
+      unrun = true;
     }
     a.running.delete(spec.id);
     if (signal.aborted) return;
-    const r = finalize(spec, out, performance.now() - t0);
+    const r = finalize(spec, out, performance.now() - t0, unrun);
     a.results.set(r.id, r);
     broadcast(a, { type: "result", result: r });
   };
@@ -211,7 +212,7 @@ async function execute(a: Active) {
     status,
     finishedAt: Date.now(),
     counts: countStates(results),
-    verdict: verdictFor(a.meta, a.plan, results, status, results.filter((r) => unchecked.has(r.id)).length),
+    verdict: verdictFor(a.meta, a.plan, results, status),
     diff: prev ? diffRuns(prev, results) : null,
   };
   const run: CheckupRun = { meta: a.meta, plan: a.plan, results, summary: a.summary };

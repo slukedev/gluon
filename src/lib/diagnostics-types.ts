@@ -239,6 +239,16 @@ export interface CheckResult {
   evidence?: string | null;
   fix?: CheckFix | null;
   ms: number;
+  /** A skip because the probe errored or timed out, not because the check doesn't apply here. */
+  unrun?: boolean;
+}
+
+/** Skips split by why: the probe broke, or the check doesn't apply. Every count of either reads this. */
+export function skipCounts(results: readonly Pick<CheckResult, "state" | "unrun">[]): { unrun: number; skipped: number } {
+  let unrun = 0;
+  let skipped = 0;
+  for (const r of results) if (r.state === "skip") r.unrun ? unrun++ : skipped++;
+  return { unrun, skipped };
 }
 
 export interface CheckPlanItem {

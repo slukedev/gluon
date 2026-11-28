@@ -1,7 +1,8 @@
 "use client";
 import * as React from "react";
 import { Disclosure } from "@/components/ui/Disclosure";
-import type { CheckPlanItem, CheckResult, CheckupGroup } from "@/lib/diagnostics-types";
+import { listJoin } from "@/lib/format";
+import { skipCounts, type CheckPlanItem, type CheckResult, type CheckupGroup } from "@/lib/diagnostics-types";
 import { RemedyButton } from "@/components/status/NeedsYou";
 import { Mark } from "./Instruments";
 import s from "./checkup.module.css";
@@ -60,7 +61,8 @@ export function ResultList({ plan, groups, results, showGroups, openPassed, setO
   const problems = sorted.filter((r) => r.state === "fail" || r.state === "warn");
   const rest = sorted.filter((r) => r.state === "ok" || r.state === "skip");
   const passed = rest.filter((r) => r.state === "ok").length;
-  const skipped = rest.length - passed;
+  const { unrun, skipped } = skipCounts(rest);
+  const restParts = [passed && `${passed} passed`, unrun && `${unrun} couldn't run`, skipped && `${skipped} skipped`].filter(Boolean) as string[];
 
   return (
     <>
@@ -78,7 +80,7 @@ export function ResultList({ plan, groups, results, showGroups, openPassed, setO
           variant="panel"
           open={openPassed}
           onOpenChange={setOpenPassed}
-          summary={`${passed ? `The ${passed} check${passed === 1 ? "" : "s"} that passed` : ""}${passed && skipped ? " and " : ""}${skipped ? `${passed ? "" : "The "}${skipped} skipped` : ""}`}
+          summary={listJoin(restParts)}
         >
           <ul className={`${s.results} ${s.passed}`} role="list" aria-label="Checks that passed">
             {rest.map((r) => (

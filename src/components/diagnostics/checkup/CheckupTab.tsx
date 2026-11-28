@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import type { CheckupKind, CheckupRun, CheckupState, CheckState } from "@/lib/diagnostics-types";
+import { skipCounts, type CheckupKind, type CheckupRun, type CheckupState, type CheckState } from "@/lib/diagnostics-types";
 import { useApi } from "@/lib/client/api";
 import { useFormat } from "@/components/PrefsProvider";
 import { Button } from "@/components/ui/Button";
@@ -255,7 +255,9 @@ export function RunPanel({ view, streaming, isLive, onRun, onBackToLatest, home 
       </React.Fragment>,
       `${fmt.plural(total, "check")} in ${fmt.duration(secs)}`,
     );
-    if (summary.counts.skip) sub.push(`${summary.counts.skip} skipped`);
+    const { unrun, skipped } = skipCounts(view.results);
+    if (unrun) sub.push(`${unrun} couldn't run`);
+    if (skipped) sub.push(`${skipped} skipped`);
   }
 
   const again = meta.kind === "full" ? "Run it again" : "Check again";
