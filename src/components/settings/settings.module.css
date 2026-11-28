@@ -120,7 +120,6 @@
 .choiceText small { font-size: var(--text-xs); color: var(--muted); font-weight: 400; }
 .plate { border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--ground); overflow: hidden; }
 .plateHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
-.plateMeta { font-size: var(--text-xs); color: var(--muted); }
 .plateBody { display: grid; gap: 12px; padding: 16px 14px; }
 .plateTitle { font-size: var(--text-2xl); font-weight: 540; font-family: var(--font-display); font-stretch: 80%; line-height: 1.02; letter-spacing: -0.012em; }
 .plateSummary { font-size: var(--text-sm); color: var(--ink-2); line-height: 1.45; }

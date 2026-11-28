@@ -191,7 +191,6 @@ function PreviewPlate() {
       <div className={s.plate}>
         <div className={s.plateHead}>
           <span className="label">Preview</span>
-          <span className={s.plateMeta}>Changes as you choose</span>
         </div>
         <div className={s.plateBody}>
           <p className={s.plateTitle}>Needs you</p>
