@@ -430,4 +430,14 @@ export const migrations: string[] = [
     checked_at INTEGER NOT NULL, PRIMARY KEY (ref, image_id)
   ) WITHOUT ROWID;
   `,
+
+  /* 16 · automatic image updates of apps Gluon runs for itself (the Quark chat server): what was running
+     before, so a failed update, or one a restart cut short, goes back to it. */ `
+  CREATE TABLE IF NOT EXISTS image_updates (
+    id TEXT PRIMARY KEY, app_id TEXT NOT NULL, container TEXT NOT NULL, service TEXT NOT NULL, ref TEXT NOT NULL,
+    prev_image TEXT NOT NULL, new_image TEXT, remote_digest TEXT, started_at INTEGER NOT NULL, finished_at INTEGER,
+    outcome TEXT NOT NULL, message TEXT
+  );
+  CREATE INDEX IF NOT EXISTS image_updates_app ON image_updates(app_id, started_at);
+  `,
 ];

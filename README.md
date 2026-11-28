@@ -224,8 +224,11 @@ Settings → Updates has two channels. **Stable** follows tagged releases. **Nig
 change pushed to `main`: Gluon checks every half hour and can install each nightly as it lands, or
 once a day in an hour you pick. Updating downloads the new version, builds it on your server, swaps it
 in, and puts the previous version back if the new one doesn't come up healthy. Switching from Nightly
-back to Stable never downgrades on its own. Installs from Umbrel's app store can also update through
-Umbrel.
+back to Stable never downgrades on its own, and automatic updates never install a new major version
+without you. Installs from Umbrel's app store can also update through Umbrel.
+
+With automatic updates on, a Quark chat server Gluon set up updates in the same hour. Gluon keeps the
+new version only if Quark answers on it, and otherwise goes back to the one it had.
 
 To update by hand instead, from the `gluon` folder:
 

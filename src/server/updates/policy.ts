@@ -71,3 +71,28 @@ export function decideAuto(i: AutoInput): AutoDecision {
   if (!i.certain || i.hour !== i.settings.hour || i.now - i.lastAutoStartedAt <= DAILY_GAP_MS) return { kind: "later" };
   return { kind: "install" };
 }
+
+export interface ImageAutoInput {
+  auto: boolean;
+  /** The hour automatic updates may start in, and the local hour now. */
+  windowHour: number;
+  hour: number;
+  now: number;
+  /** What the registry check said about the running image. */
+  check: { status: "same" | "newer" | "unknown" | "skipped"; remoteDigest: string | null } | null;
+  /** Start of this app's newest automatic image update, 0 for none. */
+  lastAttemptAt: number;
+  /** Registry digests an automatic update of this app already failed on. */
+  failedDigests: string[];
+}
+
+/**
+ * Apps Gluon runs for itself (the Quark chat server) follow Gluon's automatic updates: in the same
+ * hour, once a day, and never twice onto an image that already failed.
+ */
+export function decideImageAuto(i: ImageAutoInput): "install" | "later" | "failed" | "none" {
+  if (i.check?.status !== "newer" || !i.check.remoteDigest) return "none";
+  if (i.failedDigests.includes(i.check.remoteDigest)) return "failed";
+  if (!i.auto || i.hour !== i.windowHour || i.now - i.lastAttemptAt <= DAILY_GAP_MS) return "later";
+  return "install";
+}

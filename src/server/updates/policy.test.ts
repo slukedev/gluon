@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ASAP_GAP_MS, DAILY_GAP_MS, crossesMajor, decideAuto, type AutoInput } from "./policy";
+import { ASAP_GAP_MS, DAILY_GAP_MS, crossesMajor, decideAuto, decideImageAuto, type AutoInput } from "./policy";
 
 const NOW = Date.UTC(2026, 10, 28, 4, 10);
 
@@ -106,5 +106,36 @@ describe("decideAuto", () => {
     const daily = input({ settings: { channel: "nightly", nightlyTiming: "hour" }, option: { method: "github", to: "1.6.0-nightly.20261128.abcdef1" } });
     expect(decideAuto(daily)).toEqual({ kind: "install" });
     expect(decideAuto({ ...daily, hour: 9 })).toEqual({ kind: "later" });
+  });
+});
+
+describe("decideImageAuto", () => {
+  const DIGEST = "sha256:" + "d".repeat(64);
+  const base = { auto: true, windowHour: 4, hour: 4, now: NOW, check: { status: "newer" as const, remoteDigest: DIGEST }, lastAttemptAt: 0, failedDigests: [] };
+
+  it("installs a newer image in the automatic update hour", () => {
+    expect(decideImageAuto(base)).toBe("install");
+  });
+
+  it("has nothing to do without a newer image the registry named", () => {
+    expect(decideImageAuto({ ...base, check: null })).toBe("none");
+    expect(decideImageAuto({ ...base, check: { status: "same", remoteDigest: DIGEST } })).toBe("none");
+    expect(decideImageAuto({ ...base, check: { status: "unknown", remoteDigest: null } })).toBe("none");
+    expect(decideImageAuto({ ...base, check: { status: "newer", remoteDigest: null } })).toBe("none");
+  });
+
+  it("follows Gluon's automatic updates setting and hour", () => {
+    expect(decideImageAuto({ ...base, auto: false })).toBe("later");
+    expect(decideImageAuto({ ...base, hour: 5 })).toBe("later");
+  });
+
+  it("tries at most once a day", () => {
+    expect(decideImageAuto({ ...base, lastAttemptAt: NOW - 60_000 })).toBe("later");
+    expect(decideImageAuto({ ...base, lastAttemptAt: NOW - DAILY_GAP_MS - 1 })).toBe("install");
+  });
+
+  it("never installs an image that already failed, but takes the next one", () => {
+    expect(decideImageAuto({ ...base, failedDigests: [DIGEST] })).toBe("failed");
+    expect(decideImageAuto({ ...base, failedDigests: ["sha256:" + "e".repeat(64)] })).toBe("install");
   });
 });

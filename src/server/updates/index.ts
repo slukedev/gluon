@@ -14,6 +14,7 @@ import { AppError } from "../errors";
 import type { User } from "../auth/users";
 import { CHANNEL_NAME, type GithubTarget, type UpdateChannel, type UpdateLog, type UpdateMethod, type UpdateOption, type UpdateRelation, type UpdateRun, type UpdateStage, type UpdatesStatus } from "@/lib/updates-types";
 import { decideAuto } from "./policy";
+import { recoverChatServerUpdates, updateChatServers } from "./chat-server";
 import { REPO, changesSince, detectInstall, latestOnGithub, relate, runningBuild, umbrelStoreVersion, type InstallDetail } from "./source";
 
 /**
@@ -404,6 +405,8 @@ async function startUpdateClaimed(opts: Parameters<typeof startUpdate>[0]): Prom
 }
 
 async function background(opts: { install?: boolean } = {}) {
+  // Before Gluon's own update, which would replace this process partway through.
+  await updateChatServers(opts).catch((e) => console.error("[gluon] chat server update check failed", e));
   const { status: s, certain } = await evaluate();
   const settings = s.settings;
   const opt = s.options.find((o) => o.method === settings.method) ?? s.options[0];
@@ -468,6 +471,7 @@ export function reconsider() {
 onStart("updates", () => {
   // Finish the books on an update that replaced the previous process.
   setTimeout(() => void watch().catch(() => undefined), 15_000);
+  setTimeout(() => void recoverChatServerUpdates(), 20_000);
   every(30 * 60_000, () => background());
   setTimeout(() => void background().catch(() => undefined), 60_000);
 });
