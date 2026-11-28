@@ -219,6 +219,8 @@ async function run(key: string) {
     if (!it.id) {
       const s = await api.post<UploadSession & { exists: boolean }>("/api/files/uploads", { dir: it.dir, name: it.name, size: it.size, lastModified: file.lastModified, conflict: it.conflict });
       patch(key, { id: s.id, received: 0 });
+      // Cancelled while the server was opening it: nothing else will close that session.
+      if ((get(key)?.status ?? "cancelled") === "cancelled") await api.del(`/api/files/uploads/${s.id}`).catch(() => {});
     } else {
       const s = await api.get<UploadSession>(`/api/files/uploads/${it.id}`);
       if (s.status !== "open") throw new ApiError("closed", s.error ?? "That upload can't be resumed. Start it again.", 409);
