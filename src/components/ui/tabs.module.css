@@ -55,4 +55,5 @@
 .countAttn::before { content: ""; width: 2px; height: 11px; border-left: 2px solid var(--attn); box-shadow: 4px 0 0 var(--attn); margin-right: 4px; }
 @media (forced-colors: active) {
   .indicator { forced-color-adjust: none; background: Highlight; }
+  .countAttn::before { forced-color-adjust: none; border-color: Highlight; box-shadow: 4px 0 0 Highlight; }
 }

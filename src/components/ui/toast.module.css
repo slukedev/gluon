@@ -88,3 +88,8 @@
 @media (hover: hover) and (pointer: fine) {
   .close:hover, .action:hover { background: color-mix(in oklab, var(--ink) 6%, transparent); color: var(--ink); }
 }
+
+/* High contrast drops box-shadows, which draw the second stroke of "needs you". */
+@media (forced-colors: active) {
+  .mark[data-type="attention"] { forced-color-adjust: none; border-color: Highlight; box-shadow: 4px 0 0 Highlight; }
+}

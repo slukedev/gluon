@@ -21,3 +21,8 @@
 /* While busy only the words dim: a filter on the button's label box would shrink the fill to it. */
 .hold.hold[data-loading] > span { filter: none; opacity: 1; }
 .hold[data-loading] .text { opacity: 0.55; filter: blur(0.5px); }
+
+/* High contrast paints over backgrounds: the hold shows as a bar filling along the bottom edge. */
+@media (forced-colors: active) {
+  .fill { forced-color-adjust: none; top: auto; height: 3px; background: Highlight; }
+}

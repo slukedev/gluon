@@ -133,3 +133,10 @@
 .sheetBackdrop { opacity: calc(1 - var(--drawer-swipe-progress, 0)); transition-duration: var(--dur-drawer); transition-timing-function: var(--ease-drawer); }
 .sheetBackdrop[data-swiping] { transition-duration: 0ms; }
 .sheetBackdrop[data-ending-style] { transition-duration: calc(var(--drawer-swipe-strength, 1) * var(--dur-drawer)); }
+
+/* High contrast paints over backgrounds: the hold shows as a bar filling along the bottom edge, and the
+   field-error diamond keeps its colour. */
+@media (forced-colors: active) {
+  .holdFill { forced-color-adjust: none; top: auto; height: 3px; background: Highlight; }
+  .error::before { forced-color-adjust: none; background: CanvasText; }
+}

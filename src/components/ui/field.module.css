@@ -234,4 +234,5 @@ textarea.input { height: auto; min-height: 88px; padding: 9px 11px; line-height:
   .input:focus, .affix:focus-within { outline: 2px solid Highlight; outline-offset: 1px; }
   .affix .input:focus { outline: 0; }
   .segment[data-pressed] { forced-color-adjust: none; background: Highlight !important; color: HighlightText; }
+  .error::before { forced-color-adjust: none; background: CanvasText; }
 }
