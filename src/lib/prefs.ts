@@ -37,3 +37,10 @@ export const SEARCH_ENGINES: Record<Exclude<Prefs["searchEngine"], "custom">, { 
   startpage: { name: "Startpage", url: "https://www.startpage.com/do/search?q=%s" },
   bing: { name: "Bing", url: "https://www.bing.com/search?q=%s" },
 };
+
+/** Undoes a failed change: each key it set goes back to its earlier value, unless something newer has changed it since. */
+export function undoPatch<T extends object>(current: T, patch: Partial<T>, before: T): T {
+  const back = { ...current };
+  for (const k of Object.keys(patch) as (keyof T)[]) if (Object.is(current[k], patch[k])) back[k] = before[k];
+  return back;
+}

@@ -253,6 +253,18 @@ export function HomePrefs() {
   const set = useSet();
   const [custom, setCustom] = React.useState(prefs.searchCustomUrl);
   const [name, setName] = React.useState(prefs.greetingName);
+  // A save that fails puts the saved value back; the field follows it.
+  const [saved, setSaved] = React.useState({ name: prefs.greetingName, custom: prefs.searchCustomUrl });
+  if (saved.name !== prefs.greetingName || saved.custom !== prefs.searchCustomUrl) {
+    setSaved({ name: prefs.greetingName, custom: prefs.searchCustomUrl });
+    setName(prefs.greetingName);
+    setCustom(prefs.searchCustomUrl);
+  }
+  const commitName = () => name.trim() !== prefs.greetingName && void set({ greetingName: name.trim() });
+  const commitCustom = () => customValid && custom !== prefs.searchCustomUrl && void set({ searchCustomUrl: custom });
+  const onEnter = (commit: () => unknown) => (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") commit();
+  };
   const customValid = /^https?:\/\/\S+%s/.test(custom);
   return (
     <div className={s.stack}>
@@ -266,7 +278,7 @@ export function HomePrefs() {
         {prefs.greeting && (
           <div className={`${s.reveal} ${s.revealRow}`}>
             <SettingRow stack label="Call me">
-              <Input value={name} placeholder={viewer.displayName.split(" ")[0]} onChange={(e) => setName(e.target.value)} onBlur={() => name !== prefs.greetingName && void set({ greetingName: name.trim() })} maxLength={40} aria-label="Call me" />
+              <Input value={name} placeholder={viewer.displayName.split(" ")[0]} onChange={(e) => setName(e.target.value)} onBlur={commitName} onKeyDown={onEnter(commitName)} maxLength={40} aria-label="Call me" />
             </SettingRow>
           </div>
         )}
@@ -308,7 +320,7 @@ export function HomePrefs() {
         {prefs.searchEngine === "custom" && (
           <div className={s.reveal}>
             <Field label="Search address" description="Put %s where the search goes: https://search.example.com/?q=%s" error={custom && !customValid ? "Include %s and start with https://" : null}>
-              <Input value={custom} onChange={(e) => setCustom(e.target.value)} onBlur={() => customValid && custom !== prefs.searchCustomUrl && void set({ searchCustomUrl: custom })} mono inputMode="url" />
+              <Input value={custom} onChange={(e) => setCustom(e.target.value)} onBlur={commitCustom} onKeyDown={onEnter(commitCustom)} mono inputMode="url" spellCheck={false} autoCapitalize="none" />
             </Field>
           </div>
         )}
@@ -320,16 +332,46 @@ export function HomePrefs() {
   );
 }
 
-export function Formats() {
-  const { prefs, timeZone } = usePrefs();
-  const set = useSet();
-  // A live clock: the examples show exactly what the rest of Gluon will.
+/** Ticks every second from mount; null until then, so server and first client render agree. */
+function useNow(): number | null {
   const [now, setNow] = React.useState<number | null>(null);
   React.useEffect(() => {
     setNow(Date.now());
     const t = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, []);
+  return now;
+}
+
+type FormatPrefs = Prefs & { timezone: string };
+
+/** A live clock, kept to itself so the page around it doesn't re-render every second. */
+function Specimen({ prefs }: { prefs: FormatPrefs }) {
+  const now = useNow();
+  return (
+    <div className={s.specimen} aria-live="off">
+      <span className={s.specimenTime}>
+        <span className="num">{now === null ? "\u00a0" : formatTime(now, prefs, true)}</span>
+      </span>
+      <span className={s.specimenLine}>
+        <span className="num">{now === null ? "\u00a0" : formatDate(now, prefs, { weekday: true, year: true })}</span>
+      </span>
+    </div>
+  );
+}
+
+function TodayIs({ prefs }: { prefs: FormatPrefs }) {
+  const now = useNow();
+  return now === null ? null : (
+    <span className={s.preview}>
+      Today is <b>{formatDate(now, prefs, { year: true })}</b>
+    </span>
+  );
+}
+
+export function Formats() {
+  const { prefs, timeZone } = usePrefs();
+  const set = useSet();
   const tzs = React.useMemo(() => {
     try {
       return (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
@@ -337,19 +379,11 @@ export function Formats() {
       return [];
     }
   }, []);
-  // Built once: the clock above re-renders this page every second, and Select memoizes on `options`.
   const tzOptions = React.useMemo(() => [{ value: "auto", label: "This device's time zone" }, ...tzs.map((t) => ({ value: t, label: t.replace(/_/g, " ") }))], [tzs]);
-  const eff = { ...prefs, timezone: timeZone ?? "UTC" };
+  const eff = React.useMemo(() => ({ ...prefs, timezone: timeZone ?? "UTC" }), [prefs, timeZone]);
   return (
     <div className={s.stack}>
-      <div className={s.specimen} aria-live="off">
-        <span className={s.specimenTime}>
-          <span className="num">{now === null ? "\u00a0" : formatTime(now, eff, true)}</span>
-        </span>
-        <span className={s.specimenLine}>
-          <span className="num">{now === null ? "\u00a0" : formatDate(now, eff, { weekday: true, year: true })}</span>
-        </span>
-      </div>
+      <Specimen prefs={eff} />
       <Panel title="Time and date">
         <SettingRow label="Clock" description="Automatic follows your device's language.">
           <Segmented
@@ -363,7 +397,7 @@ export function Formats() {
             ]}
           />
         </SettingRow>
-        <SettingRow label="Dates" description={now === null ? undefined : <span className={s.preview}>Today is <b>{formatDate(now, eff, { year: true })}</b></span>}>
+        <SettingRow label="Dates" description={<TodayIs prefs={eff} />}>
           <Select
             aria-label="Date format"
             value={prefs.dateOrder}

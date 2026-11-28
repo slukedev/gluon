@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { htmlAttrs, themeColors, uiBits, type Prefs } from "@/lib/prefs";
+import { htmlAttrs, themeColors, uiBits, undoPatch, type Prefs } from "@/lib/prefs";
 import { api } from "@/lib/client/api";
 import * as f from "@/lib/format";
 
@@ -61,17 +61,20 @@ export function PrefsProvider({
     }
   }, [prefs]);
 
+  const latest = React.useRef(0);
   const setPrefs = React.useCallback(async (patch: Partial<Prefs>) => {
+    const n = ++latest.current;
     let before: Prefs | undefined;
     setState((p) => {
-      before = p;
+      before ??= p;
       return { ...p, ...patch };
     });
     try {
       const next = await api.patch<Prefs>("/api/me/prefs", patch);
-      setState(next);
+      // An older answer would undo a newer choice that is still on its way.
+      if (n === latest.current) setState(next);
     } catch (e) {
-      if (before) setState(before);
+      setState((p) => (before ? undoPatch(p, patch, before) : p));
       throw e;
     }
   }, []);
