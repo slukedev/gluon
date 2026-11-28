@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { cookies, headers } from "next/headers";
 import { CSPProvider } from "@base-ui/react/csp-provider";
 import { Atkinson_Hyperlegible_Mono, Radio_Canada, Special_Gothic } from "next/font/google";
-import { htmlAttrs, UI_COOKIE } from "@/lib/prefs";
+import { htmlAttrs, themeColors, UI_COOKIE } from "@/lib/prefs";
 import { decodeUiCookie } from "@/lib/prefs-schema";
 import { ToastProvider } from "@/components/ui/Toast";
 import { TooltipProvider } from "@/components/ui/Tooltip";
@@ -23,15 +23,18 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "Gluon", statusBarStyle: "default" },
 };
 
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f4f3ef" },
-    { media: "(prefers-color-scheme: dark)", color: "#111214" },
-  ],
-};
+export async function generateViewport(): Promise<Viewport> {
+  const colors = themeColors(decodeUiCookie((await cookies()).get(UI_COOKIE)?.value).theme);
+  return {
+    width: "device-width",
+    initialScale: 1,
+    viewportFit: "cover",
+    themeColor: [
+      { media: "(prefers-color-scheme: light)", color: colors.light },
+      { media: "(prefers-color-scheme: dark)", color: colors.dark },
+    ],
+  };
+}
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const [jar, h] = await Promise.all([cookies(), headers()]);

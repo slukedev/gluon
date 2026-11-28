@@ -8,6 +8,13 @@ export type UiBits = Pick<Prefs, "theme" | "attention" | "contrast" | "density" 
 export function uiBits(p: Prefs): UiBits {
   return { theme: p.theme, attention: p.attention, contrast: p.contrast, density: p.density, textSize: p.textSize, motion: p.motion };
 }
+const GROUND = { light: "#f4f3ef", dark: "#111214" } as const;
+
+/** The browser's bar colour for each system scheme: the ground the page will actually paint in it. */
+export function themeColors(theme: Prefs["theme"]): { light: string; dark: string } {
+  return theme === "system" ? GROUND : { light: GROUND[theme], dark: GROUND[theme] };
+}
+
 export function encodeUiCookie(b: UiBits): string {
   return [b.theme, b.attention, b.contrast, b.density, b.textSize, b.motion].join(".");
 }

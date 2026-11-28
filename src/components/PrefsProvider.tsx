@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { htmlAttrs, uiBits, type Prefs } from "@/lib/prefs";
+import { htmlAttrs, themeColors, uiBits, type Prefs } from "@/lib/prefs";
 import { api } from "@/lib/client/api";
 import * as f from "@/lib/format";
 
@@ -55,6 +55,10 @@ export function PrefsProvider({
   React.useEffect(() => {
     const el = document.documentElement;
     for (const [k, v] of Object.entries(htmlAttrs(uiBits(prefs)))) el.setAttribute(k, v);
+    const colors = themeColors(prefs.theme);
+    for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+      meta.content = meta.media.includes("dark") ? colors.dark : colors.light;
+    }
   }, [prefs]);
 
   const setPrefs = React.useCallback(async (patch: Partial<Prefs>) => {
