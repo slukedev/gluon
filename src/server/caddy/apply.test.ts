@@ -12,7 +12,17 @@ vi.stubEnv("GLUON_CADDY_SOCKET", sock);
 
 const loads: string[] = [];
 let answer = 200;
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
+  if (req.url === "/split") {
+    // A message whose multi-byte characters land across separate writes.
+    const bytes = Buffer.from(JSON.stringify({ error: "can’t load “café” · ünïcode" }));
+    res.writeHead(400, { "Content-Type": "application/json" });
+    for (let i = 0; i < bytes.length; i += 3) {
+      res.write(bytes.subarray(i, i + 3));
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    return res.end();
+  }
   let body = "";
   req.on("data", (c) => (body += c));
   req.on("end", () => {
@@ -27,7 +37,7 @@ afterAll(async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-const { applyConfig, renderCaddyfile } = await import("./routes");
+const { applyConfig, caddyAdmin, renderCaddyfile } = await import("./routes");
 import type { RoutesConfig } from "./routes";
 
 const cfg = (port: number): RoutesConfig => ({
@@ -69,4 +79,10 @@ describe("applying public addresses", () => {
     expect(fs.readFileSync(CADDYFILE, "utf8")).toBe(renderCaddyfile(cfg(80)));
     expect(loads).toEqual([renderCaddyfile(cfg(8130)), renderCaddyfile(cfg(80))]);
   });
+});
+
+test("Caddy's answers keep characters that arrive split across chunks", async () => {
+  const r = await caddyAdmin("GET", "/split");
+  expect(r.status).toBe(400);
+  expect(JSON.parse(r.body)).toEqual({ error: "can’t load “café” · ünïcode" });
 });

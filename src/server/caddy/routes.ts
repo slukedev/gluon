@@ -793,10 +793,9 @@ export function caddyAdmin(method: string, urlPath: string, body?: string, conte
         timeout: 60_000,
       },
       (res) => {
-        let data = "";
-        res.setEncoding("utf8");
-        res.on("data", (c) => (data += c));
-        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: data }));
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
       },
     );
     req.on("error", (e) => reject(new CaddyUnreachable((e as NodeJS.ErrnoException).code ?? e.message)));
