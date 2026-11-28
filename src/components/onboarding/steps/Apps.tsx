@@ -6,7 +6,7 @@ import { AppIcon } from "@/components/apps/AppIcon";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Field";
 import { Skeleton } from "@/components/ui/Surface";
-import { Actions, PartError, StepHead, useFlow, useMemberPlan } from "../flow";
+import { Actions, PartError, StepHead, useFlow, useMemberPlan, memberError } from "../flow";
 import { APPS_URL, openable, type MemberApp } from "./memberApps";
 import o from "../onboarding.module.css";
 
@@ -55,7 +55,7 @@ export function AppsStep() {
       </StepHead>
 
       {apps.error && !apps.data ? (
-        <PartError message={`Couldn't list your apps. ${apps.error.message}`} onRetry={() => void apps.mutate()} />
+        <PartError message={`Couldn't list your apps. ${memberError(apps.error)}`} onRetry={() => void apps.mutate()} />
       ) : !apps.data ? (
         <ul className={o.picks} aria-busy>
           {Array.from({ length: 4 }, (_, i) => (

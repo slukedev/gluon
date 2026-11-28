@@ -95,6 +95,11 @@ export function PartError({ message, detail, onRetry }: { message: string; detai
   );
 }
 
+/** Household members can't read the server log, so a server-side failure reads as a plain retry. */
+export function memberError(e: { status: number; message: string }): string {
+  return e.status >= 500 ? "Try again in a moment." : e.message;
+}
+
 export function firstName(displayName: string, fallback: string): string {
   return displayName.trim().split(/\s+/)[0] || fallback;
 }

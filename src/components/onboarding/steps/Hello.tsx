@@ -4,7 +4,7 @@ import { usePrefs } from "@/components/PrefsProvider";
 import { AppIcon } from "@/components/apps/AppIcon";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Surface";
-import { Actions, PartError, StepHead, firstName, useFlow, useMemberPlan } from "../flow";
+import { Actions, PartError, StepHead, firstName, useFlow, useMemberPlan, memberError } from "../flow";
 import { APPS_URL, openable, type MemberApp } from "./memberApps";
 import { Bond } from "../Bond";
 import o from "../onboarding.module.css";
@@ -31,7 +31,7 @@ export function Hello() {
           Shared with you
         </h2>
         {error && !data ? (
-          <PartError message={`Couldn't list your apps. ${error.message}`} onRetry={() => void mutate()} />
+          <PartError message={`Couldn't list your apps. ${memberError(error)}`} onRetry={() => void mutate()} />
         ) : !data ? (
           <ul className={o.tiles} aria-busy>
             {Array.from({ length: 4 }, (_, i) => (
