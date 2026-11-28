@@ -325,6 +325,9 @@ export function Shell({ children, memberFiles, initial }: ShellProps) {
             })}
           </div>
         )}
+        <div className={`${s.group} ${s.groupEnd}`}>
+          <NavLink href="/settings" label="Settings" id="settings" active={isActive(pathname, "/settings")} collapsed={collapsed && !inDrawer} />
+        </div>
       </nav>
       <div className={s.foot}>
         <Menu
