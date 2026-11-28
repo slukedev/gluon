@@ -246,6 +246,10 @@ to the current folder:
 docker run --rm -v gluon_gluon-data:/data -v "$PWD":/backup alpine tar czf /backup/gluon-data.tgz -C /data .
 ```
 
+Before each update Gluon also saves a copy of its database in `/data/backups` (the last two). If an
+update went back to the previous version and something looks wrong, stop Gluon and copy the newest
+one over `/data/gluon.db` and delete `gluon.db-wal` and `gluon.db-shm` next to it.
+
 ## Uninstall
 
 From the `gluon` folder, stop and remove the container, keeping its data:

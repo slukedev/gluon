@@ -1,7 +1,7 @@
 import "server-only";
 import fs from "node:fs";
 import path from "node:path";
-import { all, now, one, run } from "../db";
+import { all, DATA_DIR, db, now, one, run } from "../db";
 import { host } from "../host/exec";
 import { hostPath } from "../host/paths";
 import { getSetting } from "../settings";
@@ -298,6 +298,32 @@ function installScript() {
   fs.chmodSync(hostPath(SCRIPT), 0o700);
 }
 
+const SNAPSHOT_PREFIX = "gluon-before-update-";
+const KEEP_SNAPSHOTS = 2;
+
+/**
+ * A copy of the database as the running version left it. Going back to an older version puts its
+ * image back but not the data the newer one may have changed; this is the way back for that.
+ */
+export async function snapshotDb(version: string) {
+  const dir = path.join(DATA_DIR, "backups");
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const file = path.join(dir, `${SNAPSHOT_PREFIX}${version.replace(/[^A-Za-z0-9_.+-]/g, "_").slice(0, 64)}-${Date.now()}.db`);
+    await db().backup(file);
+    fs.chmodSync(file, 0o600);
+  } catch (e) {
+    throw new Error(`Couldn't save a copy of Gluon's database first (${(e as NodeJS.ErrnoException).code === "ENOSPC" ? "the drive is full" : (e as Error).message}).`);
+  }
+  const old = fs
+    .readdirSync(dir)
+    .filter((f) => f.startsWith(SNAPSHOT_PREFIX) && f.endsWith(".db"))
+    .map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs }))
+    .sort((a, b) => b.t - a.t)
+    .slice(KEEP_SNAPSHOTS);
+  for (const { f } of old) fs.rmSync(path.join(dir, f), { force: true });
+}
+
 export async function startUpdate(opts: {
   method: UpdateMethod;
   user: User | null;
@@ -350,6 +376,7 @@ async function startUpdateClaimed(opts: Parameters<typeof startUpdate>[0]): Prom
   );
 
   try {
+    await snapshotDb(s.running.version);
     if (opts.method === "umbrel") {
       if (detail.install.kind !== "umbrel") throw new Error("Gluon isn't installed through Umbrel.");
       await umbrelAction(detail.install.appId, "update");
