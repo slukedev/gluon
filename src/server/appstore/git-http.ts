@@ -1,6 +1,7 @@
 import "server-only";
 import { spawn } from "node:child_process";
 import net from "node:net";
+import { Readable } from "node:stream";
 import type { NextRequest } from "next/server";
 import { docker } from "../docker/client";
 import { clientInfo, PEER_HEADER, parseAddr } from "../net-zone";
@@ -67,6 +68,24 @@ export async function peerAllowed(req: NextRequest): Promise<boolean> {
   const stamped = req.headers.get(PEER_HEADER);
   if (stamped && !(await allowedPeer(stamped))) return false;
   return true;
+}
+
+/**
+ * What's left of the CGI output after its headers, read only as fast as the client takes it: a pack
+ * can be large, and a slow clone must not pile it up in memory.
+ */
+export function cgiBody(rest: Buffer, out: Readable, onCancel: () => void): ReadableStream<Uint8Array> {
+  let finished = false;
+  async function* chunks() {
+    try {
+      if (rest.length) yield new Uint8Array(rest);
+      for await (const c of out) yield new Uint8Array(c as Buffer);
+      finished = true;
+    } finally {
+      if (!finished) onCancel();
+    }
+  }
+  return Readable.toWeb(Readable.from(chunks(), { objectMode: false })) as unknown as ReadableStream<Uint8Array>;
 }
 
 const notFound = () => new Response("Not found\n", { status: 404, headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" } });
@@ -172,24 +191,7 @@ export async function serveGit(req: NextRequest, segments: string[]): Promise<Re
     console.error(`[gluon] git http-backend failed: ${stderr.trim()}`);
     return new Response("The app store couldn't answer.\n", { status: 502 });
   }
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      if (head.rest.length) controller.enqueue(new Uint8Array(head.rest));
-      child.stdout.on("data", (d: Buffer) => controller.enqueue(new Uint8Array(d)));
-      child.stdout.on("end", () => {
-        try {
-          controller.close();
-        } catch {
-          /* closed */
-        }
-      });
-      child.on("error", (e) => controller.error(e));
-      child.stdout.resume();
-    },
-    cancel() {
-      child.kill("SIGKILL");
-    },
-  });
+  const stream = cgiBody(head.rest, child.stdout, () => child.kill("SIGKILL"));
   head.headers.set("Cache-Control", "no-cache, max-age=0, must-revalidate");
   head.headers.delete("Content-Length");
   return new Response(stream, { status: head.status, headers: head.headers });
