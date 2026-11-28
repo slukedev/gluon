@@ -7,7 +7,7 @@ import { filesystems } from "../metrics/sampler";
 import { hostStatfs, isRemoteFs, mountOf } from "../files/mounts";
 import { formatBytes, listJoin } from "@/lib/format";
 import { readMountinfo, readSwaps, isSystemTarget, type MountEntry } from "./mounts";
-import { readFstab, matchesVolume, sourceRef, isBindEntry, isSwapEntry, readMountUnits, resolveDevLink, listBackups, type ParsedFstab, type FstabEntry, type VolumeIdentity } from "./fstab";
+import { readFstab, parseFstab, matchesVolume, sourceRef, isBindEntry, isSwapEntry, readMountUnits, resolveDevLink, listBackups, type ParsedFstab, type FstabEntry, type VolumeIdentity } from "./fstab";
 import { smartFor, smartCheckedAt, type SmartTarget } from "./smart";
 import { listContainerRefs, type ContainerRef } from "./compose";
 import { listApps } from "../docker/apps";
@@ -53,6 +53,17 @@ const COLS_BASIC = "NAME,KNAME,PATH,MAJ:MIN,TYPE,SIZE,MODEL,SERIAL,VENDOR,WWN,RO
 
 const bool = (v: unknown) => v === true || v === "1" || v === 1;
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+/** The disks still list when the startup mount list can't be read; the page says what's missing. */
+function readFstabOr(warnings: string[]): { text: string; parsed: ParsedFstab } {
+  try {
+    return readFstab();
+  } catch (e) {
+    if ((e as { code?: string }).code !== "fstab_unreadable") throw e;
+    warnings.push(`${(e as Error).message} Which drives mount at startup isn't shown.`);
+    return { text: "", parsed: parseFstab("") };
+  }
+}
 
 async function lsblk(warnings: string[]): Promise<LsblkNode[]> {
   const attempts: [typeof host, string][] = [
@@ -225,7 +236,7 @@ async function build(): Promise<InventoryState> {
   const appNames = new Map(apps.map((a) => [a.id, a.name]));
   const mounts = readMountinfo();
   const swaps = new Set(readSwaps());
-  const { text: fstabText, parsed } = readFstab();
+  const { text: fstabText, parsed } = readFstabOr(warnings);
   const units = readMountUnits();
   const links = byIdLinks();
 

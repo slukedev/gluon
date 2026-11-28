@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { applyChanges, formatEntry, matchesVolume, parseFstab, parseVerify, sourceRef } from "./fstab";
+import { applyChanges, formatEntry, fstabUnreadable, matchesVolume, parseFstab, parseVerify, sourceRef } from "./fstab";
+
+describe("fstabUnreadable", () => {
+  it("is an expected condition in plain words, never the container's own path", () => {
+    const denied = Object.assign(new Error("EACCES: permission denied, open '/proc/1/root/etc/fstab'"), { code: "EACCES" });
+    const e = fstabUnreadable(denied);
+    expect(e).toMatchObject({ code: "fstab_unreadable", status: 503 });
+    expect(e.message).not.toMatch(/proc|EACCES|\//);
+    expect(fstabUnreadable(Object.assign(new Error("EIO"), { code: "EIO" })).message).toBe("Couldn't read the server's startup mount list.");
+  });
+});
 
 describe("parseVerify", () => {
   it("passes a clean file", () => {

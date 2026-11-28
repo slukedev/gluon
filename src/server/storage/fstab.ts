@@ -78,12 +78,19 @@ export function serializeFstab(p: ParsedFstab): string {
   return p.lines.length ? body + (p.trailingNewline ? "\n" : "") : "";
 }
 
+/** The host refusing the file is a setup condition, not a crash: say so plainly, without the container's paths. */
+export function fstabUnreadable(e: unknown): AppError {
+  const code = (e as NodeJS.ErrnoException)?.code;
+  const denied = code === "EACCES" || code === "EPERM";
+  return new AppError("fstab_unreadable", denied ? "Gluon isn't allowed to read the server's startup mount list." : "Couldn't read the server's startup mount list.", 503, { reason: code ?? null });
+}
+
 export function readFstabText(): string {
   try {
     return fs.readFileSync(hostPath(FSTAB), "utf8");
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return "";
-    throw new AppError("fstab_unreadable", `Couldn't read /etc/fstab: ${(e as Error).message}`, 500);
+    throw fstabUnreadable(e);
   }
 }
 
@@ -343,7 +350,7 @@ export async function writeFstab(next: string, expectCurrent: string): Promise<F
   try {
     st = fs.lstatSync(live);
   } catch (e) {
-    throw new AppError("fstab_unreadable", `Couldn't read /etc/fstab: ${(e as Error).message}`, 500);
+    throw fstabUnreadable(e);
   }
   if (st.isSymbolicLink()) throw new AppError("fstab_link", "/etc/fstab is a link to another file, so Gluon won't edit it. Change it by hand.", 409);
   const current = fs.readFileSync(live, "utf8");
