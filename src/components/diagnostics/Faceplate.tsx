@@ -1,14 +1,14 @@
 "use client";
 import * as React from "react";
 import type { ProcessSnapshot } from "@/lib/diagnostics-types";
-import { useLive } from "@/lib/client/live";
+import { useLiveHost } from "@/lib/client/live";
 import { useFormat } from "@/components/PrefsProvider";
 import { Skeleton } from "@/components/ui/Surface";
 import s from "./instruments.module.css";
 
 export function Faceplate({ snap }: { snap: ProcessSnapshot | null }) {
   const fmt = useFormat();
-  const live = useLive();
+  const live = useLiveHost();
   const h = live.host.at(-1);
   const [active, setActive] = React.useState<string | null>(null);
 

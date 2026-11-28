@@ -3,7 +3,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { MemoryBreakdown, SystemOverview } from "@/lib/system-types";
 import { useApi } from "@/lib/client/api";
-import { useLive } from "@/lib/client/live";
+import { useLiveHost } from "@/lib/client/live";
 import { useFormat } from "@/components/PrefsProvider";
 import { Skeleton } from "@/components/ui/Surface";
 import { SegmentBar } from "@/components/ui/SegmentBar";
@@ -21,7 +21,7 @@ export function Faceplate({ overview, memory }: { overview: SystemOverview; memo
 }
 
 function CpuThreads({ overview }: { overview: SystemOverview }) {
-  const { host, status } = useLive();
+  const { host, status } = useLiveHost();
   const last = host.at(-1);
   const [focus, setFocus] = React.useState<number | null>(null);
   const threads = overview.cpu.threads;

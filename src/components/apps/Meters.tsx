@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { useLive } from "@/lib/client/live";
+import { useLiveContainers } from "@/lib/client/live";
 import { useFormat } from "@/components/PrefsProvider";
 import { Sparkline } from "@/components/charts/TimeChart";
 import s from "./meters.module.css";
@@ -15,7 +15,7 @@ export interface AppUsage {
 const SERIES = 40;
 
 export function useAppUsage(apps: { id: string; containers: { name: string }[] }[]): Map<string, AppUsage> {
-  const { containers, status } = useLive();
+  const { containers, status } = useLiveContainers();
   return React.useMemo(() => {
     const out = new Map<string, AppUsage>();
     // With the stream down the last sample is old: show no reading rather than a frozen one.

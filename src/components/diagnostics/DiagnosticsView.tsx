@@ -2,7 +2,7 @@
 import * as React from "react";
 import type { CheckupKind, CheckupRun, CheckupState, SecurityState } from "@/lib/diagnostics-types";
 import { useApi } from "@/lib/client/api";
-import { useLive } from "@/lib/client/live";
+import { useLiveHost } from "@/lib/client/live";
 import { useFormat } from "@/components/PrefsProvider";
 import { Page, PageHeader, Skeleton } from "@/components/ui/Surface";
 import { Tabs } from "@/components/ui/Tabs";
@@ -60,7 +60,7 @@ function SecuritySummary({ initial }: { initial: SecurityState | null }) {
 
 function LiveSummary() {
   const fmt = useFormat();
-  const live = useLive();
+  const live = useLiveHost();
   const h = live.host.at(-1);
   if (live.status === "offline") return <>The live feed from this server dropped. Reconnecting…</>;
   // While reconnecting the last sample is old: it isn't "right now".
