@@ -2,7 +2,7 @@ import { accessSync, constants, existsSync } from "node:fs";
 import type { Page } from "@playwright/test";
 import { actUntil, clickToOpen, expect, isPhone, open, openMainNav, test } from "./fixtures";
 
-// Without root, Gluon can't read the host's fstab and the Storage page fails as a whole.
+// Without root, Gluon can't read the host's fstab, so Storage can only show its error.
 const fstabReadable = (() => {
   try {
     accessSync("/proc/1/root/etc/fstab", constants.R_OK);
@@ -58,14 +58,18 @@ test.describe("every page", () => {
       await expect(page).toHaveURL(new RegExp(`:\\d+${path}$`));
 
       const main = page.getByRole("main");
-      if (path === "/storage" && !fstabReadable) {
-        test.info().annotations.push({ type: "issue", description: "Storage fails as a whole when /etc/fstab is unreadable" });
-        await expect(main.getByRole("heading", { level: 1, name: "This page didn't load" })).toBeVisible();
-        await expect(main.getByText("Nothing on the server was changed.")).toBeVisible();
-        await expect(main.getByRole("button", { name: "Try again" })).toBeVisible();
-        return;
-      }
       await expect(main.getByRole("heading", { level: 1, name: heading, exact: true })).toBeVisible();
+      if (path === "/storage" && !fstabReadable) {
+        // The drives can't be read, but the page keeps its tabs and offers a retry in place.
+        await expect(main.getByRole("tablist", { name: "Storage sections" })).toBeVisible();
+        const notice = main.getByRole("alert").filter({ hasText: "Couldn't read the drives" });
+        await expect(notice).toBeVisible();
+        const retry = notice.getByRole("button", { name: "Try again" });
+        const asked = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/storage");
+        await retry.click();
+        expect((await asked).ok()).toBe(false);
+        await expect(retry).toBeVisible();
+      }
       if (path.startsWith("/settings/")) await expect(page.getByRole("heading", { level: 1 }), "one page title").toHaveCount(1);
       // Let the page's own data requests finish so their failures show up as console errors.
       await page.waitForLoadState("networkidle");
@@ -165,5 +169,66 @@ test.describe("search", () => {
     await palette.getByRole("combobox").fill("zzqx nothing matches this");
     await expect(palette.getByRole("option")).toHaveCount(0);
     await expect(palette.getByRole("status")).not.toBeEmpty();
+  });
+});
+
+test("at 320px wide no section scrolls sideways", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  for (const [name, path] of navLinks) {
+    await open(page, path);
+    await expect(page).toHaveURL(new RegExp(`:\\d+${path}$`));
+    await expect(page.getByRole("main").getByRole("heading", { level: 1, name, exact: true })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    // The root keeps a stable scrollbar gutter on desktop, so its content can be narrower than the window but never wider.
+    const root = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+    expect(root.scroll, `${path} is wider than the screen`).toBeLessThanOrEqual(root.client);
+    const main = await page.getByRole("main").evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+    expect(main.scroll, `${path} has content wider than the page`).toBe(main.client);
+  }
+});
+
+test("on a phone, the link to the page already open closes the drawer and stays put", async ({ page }) => {
+  test.skip(!isPhone(page), "the drawer is the phone navigation");
+  await open(page, "/system");
+  await expect(page.getByRole("main").getByRole("heading", { level: 1, name: "System" })).toBeVisible();
+  const drawer = page.getByRole("dialog", { name: "Navigation" });
+  const current = (await openMainNav(page)).locator('a[aria-current="page"]');
+  await expect(current).toHaveAccessibleName(linkName("System"));
+  await current.tap();
+  await expect(drawer).toBeHidden();
+  await expect(page).toHaveURL(/:\d+\/system$/);
+
+  // The drawer still opens afterwards, and another link still navigates.
+  await (await openMainNav(page)).getByRole("link", { name: linkName("Sites") }).tap();
+  await expect(drawer).toBeHidden();
+  await expect(page.getByRole("main").getByRole("heading", { level: 1, name: "Sites" })).toBeVisible();
+});
+
+test.describe("not found", () => {
+  test("an unknown address answers 404 with a way home", async ({ page }) => {
+    const res = await open(page, "/no-such-page/at-all");
+    expect(res?.status()).toBe(404);
+    await expect(page).toHaveTitle(/^Not found · /);
+    const main = page.getByRole("main");
+    await expect(main.getByRole("heading", { level: 1, name: "Nothing here" })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, "page is wider than the screen").toBeLessThanOrEqual(0);
+    await main.getByRole("link", { name: "Go to Home" }).click();
+    await expect(page).toHaveURL(/:\d+\/$/);
+    await expect(page.getByRole("main").getByRole("heading", { level: 1, name: "Home" })).toBeVisible();
+  });
+
+  test("a missing item inside a section keeps the navigation around it", async ({ page }) => {
+    const res = await open(page, "/sites/no-such-site");
+    expect(res?.status()).toBe(404);
+    const main = page.getByRole("main");
+    await expect(main.getByRole("heading", { level: 1, name: "Nothing here" })).toBeVisible();
+    await expect((await openMainNav(page)).getByRole("link", { name: linkName("Sites") })).toBeVisible();
+    if (isPhone(page)) {
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog", { name: "Navigation" })).toBeHidden();
+    }
+    await main.getByRole("link", { name: "Go to Home" }).click();
+    await expect(page.getByRole("main").getByRole("heading", { level: 1, name: "Home" })).toBeVisible();
   });
 });

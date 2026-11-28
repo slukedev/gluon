@@ -21,7 +21,7 @@ const hostOnly = [
   /\/api\/network\/(status|exposure|routes)\b/,
   /\/api\/system\/(services|logins)\b/,
   /\/api\/onboarding\/inventory\?part=drives\b/,
-  /\/api\/storage\//,
+  /\/api\/storage([/?]|$)/,
   /\/api\/icon\?/,
 ];
 
