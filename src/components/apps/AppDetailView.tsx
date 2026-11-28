@@ -10,7 +10,7 @@ import type { AppDetail } from "@/server/docker/detail";
 import type { AppSummary } from "@/server/docker/apps";
 import { api, useApi, streamPost, ApiError, STATUS_KEY, STATUS_REFRESH } from "@/lib/client/api";
 import type { StatusPayload } from "@/server/status";
-import { findingWord, findingsByApp } from "@/lib/finding-words";
+import { findingsByApp } from "@/lib/finding-words";
 import { useContainerStats } from "@/lib/client/live";
 import { useFormat, usePrefs } from "@/components/PrefsProvider";
 import { Page, PageHeader, Panel, Notice, Skeleton } from "@/components/ui/Surface";
@@ -34,7 +34,7 @@ import { StackDiagram } from "./StackDiagram";
 import { OperationProgress } from "./OperationProgress";
 import { removeCopyConfirm, stopCopyConfirm } from "./copies";
 import { reduceUmbrelStream, umbrelBusy } from "./umbrelStream";
-import { trouble } from "./plain";
+import { appMark } from "@/lib/app-health";
 import { MoveDialog } from "./MoveDialog";
 import { useMoveWatch } from "./useMoveWatch";
 import { UninstallDialog } from "./UninstallDialog";
@@ -169,8 +169,9 @@ export function AppDetailView({ initial, tab: asked, container, members }: { ini
 
   const stopped = app.line === "stopped";
   const finding = app.copyOf ? undefined : findingsByApp(status?.findings).get(app.id);
-  // Same words as the Apps list: a failed web check is a problem even while Docker says running.
-  const wrong = busy ? null : (trouble(app) ?? (finding ? findingWord(finding) : null));
+  // Same mark and words as the Apps list and Home: a failed web check is a problem even while Docker says running.
+  const mark = busy ? null : appMark(app, finding);
+  const wrong = mark?.word ?? null;
   const umbrel = app.umbrel;
   const umbrelWorking = umbrelBusy(umbrel?.state);
   const canUpdate = !app.self && !umbrelWorking && !app.copyOf && (!!app.configFile || !!umbrel);
@@ -294,8 +295,8 @@ export function AppDetailView({ initial, tab: asked, container, members }: { ini
           <span className={s.summary}>
             {busy === "start" || busy === "stop" || busy === "restart" ? (
               <StateLine state="starting" label={{ start: "Starting…", stop: "Stopping…", restart: "Restarting…" }[busy]} />
-            ) : wrong ? (
-              <StateLine state="attention" label={wrong} />
+            ) : mark ? (
+              <StateLine state={mark.state} label={mark.word} />
             ) : (
               <StateLine state={app.line} label={app.copyOf ? (stopped ? "Old copy, stopped" : "Old copy, still running") : settled && app.line === "running" ? settled : app.summary} />
             )}

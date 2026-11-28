@@ -6,6 +6,8 @@ import { filesystems, latestHost, type FsUsage } from "./metrics/sampler";
 import { listActivity, type ActivityEntry } from "./audit";
 import type { User } from "./auth/users";
 import { listJoin } from "@/lib/format";
+import { isProblem, needingHand } from "@/lib/app-health";
+import { findingsByApp } from "@/lib/finding-words";
 
 export interface StatusApp {
   id: string;
@@ -13,11 +15,12 @@ export interface StatusApp {
   icon: string | null;
   line: AppSummary["line"];
   summary: string;
-  containers: { name: string; service: string | null; state: string; line: AppSummary["line"] }[];
+  containers: { name: string; service: string | null; state: string; line: AppSummary["line"]; done: boolean }[];
   urls: AppSummary["urls"];
   household: boolean;
   source: AppSummary["source"];
   copyOf: AppSummary["copyOf"];
+  umbrel: { state: string } | null;
 }
 
 export interface StatusPayload {
@@ -39,11 +42,12 @@ const slim = (a: AppSummary): StatusApp => ({
   icon: a.icon,
   line: a.line,
   summary: a.summary,
-  containers: a.containers.map((c) => ({ name: c.name, service: c.service, state: c.state, line: c.line })),
+  containers: a.containers.map((c) => ({ name: c.name, service: c.service, state: c.state, line: c.line, done: c.done })),
   urls: a.urls,
   household: a.household,
   source: a.source,
   copyOf: a.copyOf,
+  umbrel: a.umbrel ? { state: a.umbrel.state } : null,
 });
 
 function dockerDownVerdict(findings: Finding[], forMember: boolean): StatusPayload["verdict"] {
@@ -56,10 +60,13 @@ function dockerDownVerdict(findings: Finding[], forMember: boolean): StatusPaylo
   };
 }
 
-function verdictFor(findings: Finding[], apps: StatusApp[], forMember: boolean): StatusPayload["verdict"] {
+export function verdictFor(findings: Finding[], apps: StatusApp[], forMember: boolean): StatusPayload["verdict"] {
   const faults = findings.filter((f) => f.severity === "fault");
   const attention = findings.filter((f) => f.severity === "attention");
-  const down = apps.filter((a) => a.line === "unhealthy" || a.line === "stopped");
+  const down = apps.filter((a) => isProblem(a) || a.line === "stopped");
+  // Apps broken by their own containers that no finding covers yet: Apps counts them, so this does too.
+  const byApp = findingsByApp(findings);
+  const broken = needingHand(apps, byApp).filter((a) => !byApp.has(a.id));
   if (forMember) {
     if (!apps.length) return { tone: "ok", headline: "The server is up.", detail: "No apps are shared with you yet. Ask the admin for the ones you use." };
     if (down.length) {
@@ -67,11 +74,12 @@ function verdictFor(findings: Finding[], apps: StatusApp[], forMember: boolean):
     }
     return { tone: "ok", headline: "Everything's working.", detail: "" };
   }
-  if (faults.length) {
-    const lead = faults[0]!.title.replace(/\.$/, "");
+  if (faults.length || broken.length) {
+    const n = faults.length + broken.length;
+    const lead = faults[0] ? faults[0].title.replace(/\.$/, "") : `${broken[0]!.name} needs a hand`;
     return {
       tone: "fault",
-      headline: faults.length === 1 ? `${lead}.` : `${faults.length} things are broken.`,
+      headline: n === 1 ? `${lead}.` : `${n} things are broken.`,
       detail: attention.length ? `${attention.length} more ${attention.length === 1 ? "thing needs" : "things need"} you after that.` : "Everything else is running.",
     };
   }

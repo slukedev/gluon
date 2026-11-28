@@ -6,6 +6,7 @@ import type { Finding } from "@/server/findings";
 import { useFormat } from "@/components/PrefsProvider";
 import { AppIcon } from "@/components/apps/AppIcon";
 import { useAppUsage } from "@/components/apps/Meters";
+import { appMark } from "@/lib/app-health";
 import c from "./appConsole.module.css";
 
 /** Levels use a log scale so a 0.5% app still reads, and a busy one still fits. */
@@ -44,7 +45,8 @@ export function AppConsole({ apps, findings }: { apps: StatusApp[]; findings: Fi
     const u = usage.get(a.id);
     const f = faults.get(a.id);
     const stopped = a.line === "stopped" && !f;
-    const tone: Strip["tone"] = f?.severity === "fault" || a.line === "unhealthy" ? "fault" : f ? "attention" : stopped ? "stopped" : "running";
+    const mark = appMark(a, f);
+    const tone: Strip["tone"] = mark?.state === "unhealthy" ? "fault" : mark ? "attention" : stopped ? "stopped" : "running";
     const peak = u ? Math.max(...u.cpuSeries.slice(-PEAK_SAMPLES), u.cpu) : null;
     return {
       id: a.id,
@@ -56,7 +58,7 @@ export function AppConsole({ apps, findings }: { apps: StatusApp[]; findings: Fi
       mem: u?.mem ?? null,
       tone,
       off: a.line === "stopped",
-      note: tone === "fault" ? (f?.title.replace(/\.$/, "") ?? a.summary) : tone === "attention" ? (f?.title.replace(/\.$/, "") ?? "Needs you") : stopped ? "Stopped" : a.summary,
+      note: mark ? (f?.title.replace(/\.$/, "") ?? mark.word) : stopped ? "Stopped" : a.summary,
     };
   });
   const order = (s: Strip) => (s.tone === "fault" ? 0 : s.tone === "attention" ? 1 : s.tone === "running" ? 2 : 3);
