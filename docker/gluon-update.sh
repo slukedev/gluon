@@ -107,8 +107,9 @@ prune_builds() { # <repository> <image id to keep>…
   docker image prune -f --filter label=gluon.updater=1 >/dev/null 2>&1 || true
 }
 
-wait_healthy() { # <container> <image id> [commit] → 0 when it runs that image (and commit) and is healthy (or has no healthcheck)
-  local c=$1 want=$2 commit=${3:-}
+STABLE_S=60
+wait_healthy() { # <container> <image id> [commit] → 0 when it runs that image (and commit) and is healthy (or has no healthcheck and stays up)
+  local c=$1 want=$2 commit=${3:-} seen="" since=0 started
   for _ in $(seq 1 90); do
     sleep 4
     local img state health env
@@ -120,7 +121,15 @@ wait_healthy() { # <container> <image id> [commit] → 0 when it runs that image
     state=$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null || true)
     health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$c" 2>/dev/null || true)
     if [ -n "$want" ] && [ "$img" != "$want" ]; then continue; fi
-    if [ "$state" = running ] && { [ "$health" = healthy ] || [ "$health" = none ]; }; then return 0; fi
+    [ "$state" = running ] || continue
+    [ "$health" = healthy ] && return 0
+    if [ "$health" = none ]; then
+      # Without a healthcheck (builds from before the image had one), a container that crashes and
+      # restarts is "running" between crashes: it has to stay up on the same start for a while.
+      started=$(docker inspect -f '{{.State.StartedAt}}' "$c" 2>/dev/null || true)
+      if [ "$started" != "$seen" ]; then seen=$started since=$SECONDS; fi
+      [ $((SECONDS - since)) -ge "$STABLE_S" ] && return 0
+    fi
   done
   return 1
 }

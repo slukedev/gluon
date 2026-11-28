@@ -43,6 +43,10 @@ ENV GLUON_PEER_HEADER=1
 # the label the base is deleted and the next app start can't rebuild.
 LABEL coolify.managed=true
 EXPOSE 8130
+# In the image itself, so installs whose compose file has none (Umbrel's) still say when Gluon is up;
+# the updater rolls back when a new version never gets there.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||8130)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 # pid: host means tini is not PID 1, so it registers as a subreaper to still collect zombies.
 ENTRYPOINT ["/usr/bin/tini", "-s", "--"]
 CMD ["node", "gluon-server.cjs"]

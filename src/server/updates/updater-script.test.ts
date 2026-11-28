@@ -34,7 +34,8 @@ case "$1" in
     img=$(cat "$S/container" 2>/dev/null)
     case "$fmt" in
       *'.Config.Env'*) echo "GLUON_COMMIT=x" ;;
-      *'.State.Health'*) if [ "$img" = "$UNHEALTHY" ]; then echo unhealthy; else echo healthy; fi ;;
+      *'.State.StartedAt'*) if [ "$img" = "$CRASH_LOOP" ]; then date +%s%N; else echo 2026-11-28T04:00:00Z; fi ;;
+      *'.State.Health'*) if [ -n "$NO_HEALTH" ]; then echo none; elif [ "$img" = "$UNHEALTHY" ]; then echo unhealthy; else echo healthy; fi ;;
       *'.State.Status'*) echo running ;;
       *'.Image'*) echo "$img" ;;
     esac ;;
@@ -84,11 +85,11 @@ function tarball(top: string) {
   return out;
 }
 
-function run(args: string[], env: Record<string, string> = {}, wrap: string[] = []) {
+function run(args: string[], env: Record<string, string> = {}, wrap: string[] = [], edit = (s: string) => s) {
   const script = path.join(dir, "gluon-update.sh");
   fs.writeFileSync(
     script,
-    SCRIPT.replace(/^export PATH=.*$/m, `export PATH="${path.join(dir, "bin")}:$PATH"`).replaceAll("/var/lib/gluon", path.join(dir, "lib")),
+    edit(SCRIPT.replace(/^export PATH=.*$/m, `export PATH="${path.join(dir, "bin")}:$PATH"`).replaceAll("/var/lib/gluon", path.join(dir, "lib"))),
   );
   const cmd = [...wrap, "bash", script, ...args];
   const r = spawnSync(cmd[0]!, cmd.slice(1), {
@@ -184,6 +185,24 @@ describe("gluon-update.sh", () => {
     expect(r.done).toEqual(["failed", "Another update is already running."]);
     expect(running()).toBe(OLD_ID);
     expect(fs.existsSync(path.join(state, "log"))).toBe(false);
+  });
+
+  describe("without a healthcheck", () => {
+    // Real time here: a second to count as up, and fewer looks so a failure is quick.
+    const quick = (s: string) => s.replace("STABLE_S=60", "STABLE_S=1").replace("seq 1 90", "seq 1 8");
+    beforeEach(() => stub("sleep", "#!/bin/sh\nexec /bin/sleep 0.2\n"));
+
+    it("keeps a new version that stays up", () => {
+      const r = run(github(), { NO_HEALTH: "1" }, [], quick);
+      expect(r.done).toEqual(["ok", "Gluon is running the new version."]);
+      expect(running()).toBe(NEW_ID);
+    }, 15_000);
+
+    it("goes back from a new version that keeps crashing and restarting", () => {
+      const r = run(github(), { NO_HEALTH: "1", CRASH_LOOP: NEW_ID }, [], quick);
+      expect(r.done).toEqual(["failed", "The new version didn't start, so Gluon went back to the previous one."]);
+      expect(running()).toBe(OLD_ID);
+    }, 15_000);
   });
 
   it("rejects a ref that isn't a full commit", () => {
