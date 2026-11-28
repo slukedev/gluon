@@ -5,7 +5,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 // A real database with every migration; Docker, the host and Quark are stand-ins with state.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gluon-chat-update-"));
-process.env.GLUON_DATA = dir;
+process.env.GLUON_DATA = path.join(dir, "gluon");
+process.env.GLUON_HOST_ROOT = "/";
+// Quark's folders on the host, as its compose file mounts them.
+const CONFIG = path.join(dir, "quark", "config");
+const LIB = path.join(dir, "quark", "lib");
 
 const REF = "ghcr.io/slukedev/quark:edge";
 const OLD = "sha256:" + "1".repeat(64);
@@ -22,6 +26,9 @@ const world = {
   upFails: false,
   /** Images Quark doesn't answer on. */
   broken: new Set<string>(),
+  stopped: false,
+  /** What Quark held in its database while it was running, by image: the new one migrates it. */
+  migrates: true,
 };
 const idOf = (x: string) => (x.startsWith("sha256:") ? x : world.tags.get(x));
 
@@ -30,7 +37,15 @@ vi.mock("@/server/docker/client", () => ({
     getContainer: (name: string) => ({
       inspect: async () => {
         if (name !== CONTAINER || !world.running) throw Object.assign(new Error("no such container"), { statusCode: 404 });
-        return { Id: "c1", Image: world.running, State: { Running: true } };
+        return {
+          Id: "c1",
+          Image: world.running,
+          State: { Running: !world.stopped },
+          Mounts: [
+            { Source: CONFIG, Destination: "/etc/quark" },
+            { Source: LIB, Destination: "/var/lib/quark" },
+          ],
+        };
       },
     }),
     getImage: (x: string) => ({
@@ -56,9 +71,17 @@ vi.mock("@/server/host/exec", () => ({
     if (args.includes("pull")) {
       if (world.pullFails) throw new Error("network down");
       world.tags.set(REF, NEW);
+    } else if (args.includes("stop")) {
+      world.stopped = true;
     } else if (args.includes("up")) {
       if (world.upFails && world.tags.get(REF) === NEW) throw new Error("port taken");
       world.running = world.tags.get(REF) ?? null;
+      world.stopped = false;
+      // The new version moves its database on, the way a real upgrade would.
+      if (world.running === NEW && world.migrates) {
+        fs.writeFileSync(path.join(LIB, "quark.db"), "schema 2");
+        fs.writeFileSync(path.join(LIB, "quark.db-wal"), "schema 2 journal");
+      }
     }
     return { stdout: "", stderr: "" };
   },
@@ -75,7 +98,7 @@ const app = {
 vi.mock("@/server/chat/backend", () => ({ chatApps: async () => [{ app, kind: "quark", running: true }] }));
 vi.mock("@/server/chat/quark", () => ({
   quarkCtl: async () => {
-    if (!world.running || world.broken.has(world.running)) throw new Error("not answering");
+    if (!world.running || world.stopped || world.broken.has(world.running)) throw new Error("not answering");
     return { ok: true };
   },
 }));
@@ -102,7 +125,13 @@ const T0 = new Date(2026, 10, 28, 4, 10).getTime();
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date", "setTimeout"] });
   vi.setSystemTime(T0);
-  Object.assign(world, { running: OLD, removed: [], composeCalls: [], pullFails: false, upFails: false, broken: new Set() });
+  Object.assign(world, { running: OLD, removed: [], composeCalls: [], pullFails: false, upFails: false, broken: new Set(), stopped: false, migrates: true });
+  fs.rmSync(path.join(dir, "quark"), { recursive: true, force: true });
+  fs.mkdirSync(CONFIG, { recursive: true });
+  fs.mkdirSync(path.join(LIB, "uploads"), { recursive: true });
+  fs.writeFileSync(path.join(CONFIG, "quark.toml"), "domain = 'chat.example.com'\n");
+  fs.writeFileSync(path.join(LIB, "quark.db"), "schema 1");
+  fs.writeFileSync(path.join(LIB, "uploads", "photo.jpg"), "big shared file");
   world.tags = new Map([[REF, OLD]]);
   for (const t of ["image_updates", "app_image_checks", "findings", "self_updates", "audit_log"]) db.run(`DELETE FROM ${t}`);
   settings.setSetting("updates", { auto: true, channel: "stable", hour: 4, method: "github", nightlyTiming: "hour" });
@@ -136,9 +165,32 @@ describe("updateChatServers", () => {
     expect(rows()).toEqual([{ outcome: "ok", message: "Quark is running the new image.", new_image: NEW }]);
     expect(world.composeCalls.map((a) => a.slice(-2))).toEqual([
       ["pull", "quark"],
+      ["30", "quark"],
       ["--no-deps", "quark"],
     ]);
     expect(world.removed).toEqual([OLD]);
+    // The copy holds Quark's config and database from before, and leaves shared files out.
+    const snaps = path.join(dir, "gluon", "backups", "chat", "quark");
+    const [snap] = fs.readdirSync(snaps);
+    expect(fs.readFileSync(path.join(snaps, snap!, "0", "quark.toml"), "utf8")).toContain("chat.example.com");
+    expect(fs.readFileSync(path.join(snaps, snap!, "1", "quark.db"), "utf8")).toBe("schema 1");
+    expect(fs.existsSync(path.join(snaps, snap!, "1", "uploads"))).toBe(false);
+    expect(fs.readFileSync(path.join(LIB, "quark.db"), "utf8")).toBe("schema 2");
+  });
+
+  it("copies the data only while Quark is stopped", async () => {
+    const seen: boolean[] = [];
+    const real = fs.copyFileSync.bind(fs);
+    const spy = vi.spyOn(fs, "copyFileSync").mockImplementation((src, dst, mode) => {
+      seen.push(world.stopped);
+      real(src, dst, mode);
+    });
+    await settle(m.updateChatServers());
+    spy.mockRestore();
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every(Boolean)).toBe(true);
+    expect(world.running).toBe(NEW);
+    expect(world.stopped).toBe(false);
   });
 
   it("goes back to the image it had when Quark doesn't answer on the new one, and won't try that one again", async () => {
@@ -149,6 +201,11 @@ describe("updateChatServers", () => {
     expect(rows()[0]).toMatchObject({ outcome: "failed", message: "The new image didn't start, so it went back to the one it had." });
     expect(finding()).toMatchObject({ title: "Quark couldn't update on its own", resolved_at: null });
     expect(world.removed).toEqual([]);
+    // Its database is the one from before, without the newer version's journal, and shared files stay.
+    expect(fs.readFileSync(path.join(LIB, "quark.db"), "utf8")).toBe("schema 1");
+    expect(fs.existsSync(path.join(LIB, "quark.db-wal"))).toBe(false);
+    expect(fs.readFileSync(path.join(LIB, "uploads", "photo.jpg"), "utf8")).toBe("big shared file");
+    expect(fs.readFileSync(path.join(CONFIG, "quark.toml"), "utf8")).toContain("chat.example.com");
 
     // A day later the registry still offers the same image: left alone.
     vi.setSystemTime(T0 + 24 * 3600_000);
@@ -176,6 +233,18 @@ describe("updateChatServers", () => {
     vi.setSystemTime(T0 + 24 * 3600_000);
     await settle(m.updateChatServers());
     expect(world.running).toBe(NEW);
+  });
+
+  it("doesn't update when its data is too large to copy, and leaves Quark running as it was", async () => {
+    const big = path.join(LIB, "history.db");
+    fs.writeFileSync(big, "");
+    fs.truncateSync(big, 600 * 1024 * 1024);
+    await settle(m.updateChatServers());
+    expect(world.running).toBe(OLD);
+    expect(world.stopped).toBe(false);
+    expect(world.tags.get(REF)).toBe(OLD);
+    expect(rows()[0]).toMatchObject({ outcome: "failed", message: "Its data (600 MB) is too large to copy before updating." });
+    expect(finding()?.title).toBe("Quark couldn't update on its own");
   });
 
   it("waits for the automatic update hour, and does nothing with automatic updates off", async () => {
@@ -233,6 +302,37 @@ describe("recoverChatServerUpdates", () => {
     expect(world.tags.get(REF)).toBe(OLD);
     expect(world.running).toBe(OLD);
     expect(world.composeCalls).toEqual([]);
+    expect(rows()[0]!.outcome).toBe("interrupted");
+  });
+
+  it("starts Quark again when the restart came while it was stopped for the copy", async () => {
+    started(NEW);
+    world.tags.set(REF, NEW);
+    world.stopped = true;
+    await settle(m.recoverChatServerUpdates());
+    expect(world.running).toBe(OLD);
+    expect(world.stopped).toBe(false);
+    expect(world.tags.get(REF)).toBe(OLD);
+    expect(rows()[0]!.outcome).toBe("interrupted");
+  });
+
+  it("puts the data back when the restart left a new image that doesn't answer", async () => {
+    const { takeSnapshot } = await import("./chat-data");
+    const snap = takeSnapshot("quark", "r1", [
+      { source: CONFIG, destination: "/etc/quark" },
+      { source: LIB, destination: "/var/lib/quark" },
+    ]);
+    started(NEW);
+    db.run("UPDATE image_updates SET snapshot = ? WHERE id = 'r1'", snap);
+    world.tags.set(REF, NEW);
+    world.running = NEW;
+    fs.writeFileSync(path.join(LIB, "quark.db"), "schema 2");
+    fs.writeFileSync(path.join(LIB, "quark.db-wal"), "schema 2 journal");
+    world.broken.add(NEW);
+    await settle(m.recoverChatServerUpdates());
+    expect(world.running).toBe(OLD);
+    expect(fs.readFileSync(path.join(LIB, "quark.db"), "utf8")).toBe("schema 1");
+    expect(fs.existsSync(path.join(LIB, "quark.db-wal"))).toBe(false);
     expect(rows()[0]!.outcome).toBe("interrupted");
   });
 

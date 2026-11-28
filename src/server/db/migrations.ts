@@ -440,4 +440,8 @@ export const migrations: string[] = [
   );
   CREATE INDEX IF NOT EXISTS image_updates_app ON image_updates(app_id, started_at);
   `,
+
+  /* 17 · where the copy of the app's own data from before the update is, so going back restores it. */ `
+  ALTER TABLE image_updates ADD COLUMN snapshot TEXT;
+  `,
 ];

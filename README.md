@@ -228,7 +228,9 @@ back to Stable never downgrades on its own, and automatic updates never install 
 without you. Installs from Umbrel's app store can also update through Umbrel.
 
 With automatic updates on, a Quark chat server Gluon set up updates in the same hour. Gluon keeps the
-new version only if Quark answers on it, and otherwise goes back to the one it had.
+new version only if Quark answers on it, and otherwise goes back to the one it had, with its settings
+and accounts as they were. The last two copies of its data, without shared files, are kept in
+`/data/backups/chat`.
 
 To update by hand instead, from the `gluon` folder:
 
