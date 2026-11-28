@@ -11,7 +11,7 @@ Thanks for wanting to help. Bug reports, fixes and ideas are all welcome.
 
 ## Setting up
 
-You'll need Node 22 or newer.
+You'll need Node 24 or newer.
 
 ```sh
 npm install
