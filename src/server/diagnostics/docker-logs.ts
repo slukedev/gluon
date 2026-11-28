@@ -1,4 +1,5 @@
 import "server-only";
+import { StringDecoder } from "node:string_decoder";
 import type Docker from "dockerode";
 import { docker } from "../docker/client";
 
@@ -39,23 +40,27 @@ export async function findContainer(name: string, fallback?: (c: Docker.Containe
 
 export class Demuxer {
   private buf: Buffer = Buffer.alloc(0);
+  // One per stream: a character split across frames or chunks is finished by the next bytes of the same stream.
+  private readonly decoders = [new StringDecoder("utf8"), new StringDecoder("utf8"), new StringDecoder("utf8")];
+  private raw = false;
   constructor(private readonly tty: boolean) {}
 
   push(chunk: Buffer): string {
-    if (this.tty) return chunk.toString("utf8");
+    if (this.tty || this.raw) return this.decoders[0]!.write(chunk);
     this.buf = this.buf.length ? Buffer.concat([this.buf, chunk]) : chunk;
     let out = "";
     while (this.buf.length >= 8) {
       const type = this.buf[0]!;
-      // Not a frame header after all (TTY container we misjudged): pass through raw.
+      // Not a frame header after all (TTY container we misjudged): pass the rest through raw.
       if (type > 2 || this.buf[1] !== 0 || this.buf[2] !== 0 || this.buf[3] !== 0) {
-        out += this.buf.toString("utf8");
+        this.raw = true;
+        out += this.decoders[0]!.write(this.buf);
         this.buf = Buffer.alloc(0);
         break;
       }
       const size = this.buf.readUInt32BE(4);
       if (this.buf.length < 8 + size) break;
-      out += this.buf.subarray(8, 8 + size).toString("utf8");
+      out += this.decoders[type]!.write(this.buf.subarray(8, 8 + size));
       this.buf = this.buf.subarray(8 + size);
     }
     return out;
