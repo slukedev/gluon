@@ -12,8 +12,6 @@
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 .pad { padding: 16px 18px; color: var(--muted); font-size: var(--text-md); }
 .padless { color: var(--muted); font-size: var(--text-md); }
-.panelHint { font-size: var(--text-xs); color: var(--muted); }
-@media (max-width: 720px) { .panelHint { display: none; } }
 .faint { color: var(--muted); }
 
 .umbrelBusy { display: grid; gap: 8px; }

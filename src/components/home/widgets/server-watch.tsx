@@ -71,7 +71,6 @@ function UptimeWidget({ size }: WidgetProps) {
           <StateLine state="stopped" label={false} size={18} />
           <span>Nothing is being watched</span>
         </p>
-        <p className={w.subWrap}>Gluon checks your apps and public addresses once they're added in Settings → Alerts.</p>
         <Link href={alertsHref()} className={w.more}>
           Watch an address
         </Link>
@@ -96,7 +95,7 @@ function UptimeWidget({ size }: WidgetProps) {
         <span>
           {told ? (
             <>
-              The other <span className="num">{watched.length - down.length}</span> are answering
+              {watched.length - down.length === 1 ? "The other one is answering" : <>The other <span className="num">{watched.length - down.length}</span> are answering</>}
             </>
           ) : down.length ? (
             <>

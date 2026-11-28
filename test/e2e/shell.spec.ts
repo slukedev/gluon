@@ -87,6 +87,7 @@ const navLinks = [
   ["System", "/system"],
   ["Diagnostics", "/diagnostics"],
   ["Terminal", "/terminal"],
+  ["Settings", "/settings"],
 ] as const;
 
 // A link can carry a live count: "Home 1 needs you", "Home 2 need you".

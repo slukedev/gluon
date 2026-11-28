@@ -279,7 +279,7 @@ export function NetworkView({ initial, landing }: { initial: RoutesResponse | nu
   };
 
   let summary: React.ReactNode = "Checking your apps on the internet…";
-  if (routes.error && !data) summary = "Can't read your public addresses right now.";
+  if (routes.error && !data) summary = "Can't read your public addresses.";
   else if (entries) {
     // Sites from Sites aren't apps and have no login to ask about; they only come up here when they're broken.
     const sites = entries.filter((e) => e.on && e.site);
@@ -394,7 +394,7 @@ export function NetworkView({ initial, landing }: { initial: RoutesResponse | nu
       />
 
       {routes.error && !data ? (
-        <Notice tone="fault" title="Can't read the public addresses" action={<Button size="sm" onClick={() => void routes.mutate()}>Try again</Button>}>
+        <Notice tone="fault" action={<Button size="sm" onClick={() => void routes.mutate()}>Try again</Button>}>
           {routes.error.message}
         </Notice>
       ) : !data || !mapModel ? (

@@ -15,7 +15,8 @@ function ProblemsWidget(_: WidgetProps) {
   if (!data) return <div className={w.body} aria-busy />;
   if (!data.findings.length)
     return (
-      <WidgetState line="running" title="Nothing needs you">
+      // Under its "Needs you" title one word is enough; the status hero says the sentence.
+      <WidgetState line="running" title="Nothing">
         Checked <Time ts={data.checkedAt} kind="time" />
       </WidgetState>
     );

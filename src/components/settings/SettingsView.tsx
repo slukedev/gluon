@@ -7,6 +7,18 @@ import { orderedNav } from "@/lib/nav";
 import { useNavAccess } from "@/components/shell/Shell";
 import { usePrefs } from "@/components/PrefsProvider";
 import { PageHeader } from "@/components/ui/Surface";
+import { useApi } from "@/lib/client/api";
+import type { UpdatesStatus } from "@/lib/updates-types";
+
+/** Same request as the section below it, so the sentence costs nothing extra. */
+function UpdatesSummary({ fallback }: { fallback: string }) {
+  const { data } = useApi<UpdatesStatus>("/api/updates", { refresh: 60_000 });
+  if (!data) return fallback;
+  if (data.current) return `Updating to ${data.current.toVersion}.`;
+  if (data.updateAvailable && data.latest) return `${data.latest.version} is out. You're on ${data.running.version}.`;
+  if (data.install.kind === "development") return `Running ${data.running.version} from source.`;
+  return `Running ${data.running.version}. Automatic updates are ${data.settings.auto ? "on" : "off"}.`;
+}
 
 function useSummary(id: string, fallback: string): React.ReactNode {
   const { prefs, viewer } = usePrefs();
@@ -32,6 +44,8 @@ function useSummary(id: string, fallback: string): React.ReactNode {
       const nav = orderedNav(viewer.role, prefs.sidebarOrder, prefs.sidebarHidden, access);
       return `${nav.visible.length} of ${nav.all.length} pages in the sidebar${nav.hidden.length ? `, ${nav.hidden.length} tucked away` : ""}. Single-key shortcuts are ${prefs.shortcuts ? "on" : "off"}.`;
     }
+    case "updates":
+      return <UpdatesSummary fallback={fallback} />;
     default:
       return fallback;
   }

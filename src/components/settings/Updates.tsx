@@ -120,7 +120,7 @@ export function Updates() {
   return (
     <div className={s.stack}>
       <Running data={data} checking={checking} onCheck={() => void checkNow()} />
-      <Situation data={data} checking={checking} onCheck={() => void checkNow()} onChanged={refresh} confirm={confirm} />
+      <Situation data={data} checking={checking} onChanged={refresh} confirm={confirm} />
       <Channel settings={writer.settings ?? data.settings} save={writer.save} setChecking={setChecking} />
       <Automatic data={data} settings={writer.settings ?? data.settings} save={writer.save} />
       {data.recent.length > 0 && <History runs={data.recent} />}
@@ -136,7 +136,7 @@ function Running({ data, checking, onCheck }: { data: UpdatesStatus; checking: b
   const note = checking
     ? `Checking ${CHANNEL_NAME[data.settings.channel]}…`
     : data.checkError
-      ? "Couldn't check."
+      ? null
       : !latest
         ? "Not checked yet."
         : relation === "ahead"
@@ -154,7 +154,7 @@ function Running({ data, checking, onCheck }: { data: UpdatesStatus; checking: b
           <span>Checking…</span>
         ) : data.checkedAt ? (
           <span>
-            Checked <Time ts={data.checkedAt} />
+            {data.checkError ? "Tried" : "Checked"} <Time ts={data.checkedAt} />
           </span>
         ) : undefined
       }
@@ -170,7 +170,7 @@ function Running({ data, checking, onCheck }: { data: UpdatesStatus; checking: b
             )}
           </div>
           <p className={s.sub}>
-            {showRail ? null : `${note} `}
+            {showRail || !note ? null : `${note} `}
             {data.install.kind === "development" ? null : `${installWords(data.install)} `}
             Started <Time ts={running.startedAt} />.
           </p>
@@ -222,13 +222,11 @@ function Running({ data, checking, onCheck }: { data: UpdatesStatus; checking: b
 function Situation({
   data,
   checking,
-  onCheck,
   onChanged,
   confirm,
 }: {
   data: UpdatesStatus;
   checking: boolean;
-  onCheck: () => void;
   onChanged: () => void;
   confirm: (o: ConfirmOptions) => void;
 }) {
@@ -239,16 +237,9 @@ function Situation({
     <>
       {recentFailure && <LastFailed run={recentFailure} />}
       {!data.canSelfUpdate && <CantUpdate data={data} />}
-      {data.checkError && (
-        <Notice
-          tone="neutral"
-          title="Couldn't check for updates"
-          action={
-            <Button size="sm" onClick={onCheck} loading={checking}>
-              Retry
-            </Button>
-          }
-        >
+      {/* Check now sits right above, so the notice doesn't repeat it. */}
+      {data.checkError && !checking && (
+        <Notice tone="neutral" title="Couldn't check for updates">
           {data.checkError}
         </Notice>
       )}
@@ -643,7 +634,11 @@ function Automatic({ data, settings: st, save: write }: { data: UpdatesStatus; s
 
   const nightly = st.channel === "nightly";
   const asap = nightly && st.nightlyTiming === "asap";
-  const description = !st.auto
+  // A development copy never installs anything, so an "on" switch would promise what can't happen.
+  const off = data.install.kind === "development";
+  const description = off
+    ? undefined
+    : !st.auto
     ? "Off. You're told when one is out."
     : asap
       ? "On. Each nightly installs within about half an hour of landing."
@@ -653,9 +648,9 @@ function Automatic({ data, settings: st, save: write }: { data: UpdatesStatus; s
     <Panel title="Automatic updates">
       <div className={s.rows}>
         <SettingRow label={nightly ? "Install nightlies automatically" : "Install updates automatically"} description={description}>
-          <Switch checked={st.auto} onChange={(v) => void save({ auto: v })} aria-label="Install updates automatically" />
+          <Switch checked={st.auto && !off} disabled={off} onChange={(v) => void save({ auto: v })} aria-label="Install updates automatically" />
         </SettingRow>
-        {nightly && (
+        {st.auto && !off && nightly && (
           <SettingRow
             label="How often"
             description={asap ? "Never while another update is running." : undefined}
@@ -671,9 +666,9 @@ function Automatic({ data, settings: st, save: write }: { data: UpdatesStatus; s
             />
           </SettingRow>
         )}
-        {!asap && (
+        {st.auto && !off && !asap && (
           <div className={`${s.reveal} ${s.revealRow}`}>
-            <SettingRow label="When" description="Pick an hour when nobody's watching a film.">
+            <SettingRow label="When">
               <Select
                 value={String(st.hour)}
                 onChange={(v) => void save({ hour: Number(v) })}
