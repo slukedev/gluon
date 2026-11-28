@@ -16,6 +16,7 @@ import { StateLine, lineLabel } from "@/components/ui/StateLine";
 import { Skeleton } from "@/components/ui/Surface";
 import { toast } from "@/components/ui/Toast";
 import { instanceHints, shortName } from "@/lib/app-names";
+import { appMark } from "@/lib/app-health";
 import { SetUp, WidgetState } from "./kit";
 import s from "./app.module.css";
 
@@ -27,7 +28,9 @@ export interface AppConfig {
 /** What /api/apps returns: admins get containers (for live stats); members get the trimmed view. */
 export type ApiApp = HomeApp & {
   source?: string;
-  containers?: { name: string; state: string; status: string; line: HomeApp["line"] }[];
+  containers?: { name: string; state: string; status: string; line: HomeApp["line"]; done?: boolean }[];
+  copyOf?: unknown;
+  umbrel?: { state: string } | null;
 };
 
 const HOST = /^https?:\/\/([^/]+)/i;
@@ -176,6 +179,7 @@ export function AppWidget({ item, size, openSettings }: WidgetProps<AppConfig>) 
   const href = url(app.urls);
   const target = linkTarget(href, prefs.openLinks === "new");
   const stopped = app.line === "stopped";
+  const mark = appMark({ ...app, containers: app.containers ?? [] });
   const hasStats = admin && !stopped && !!app.containers?.length;
   const uptime = !stopped ? uptimeOf(app) : null;
   const publicHost = hostOf(app.urls.away);
@@ -210,8 +214,8 @@ export function AppWidget({ item, size, openSettings }: WidgetProps<AppConfig>) 
             {hint && <span className={s.hint}>{hint}</span>}
           </span>
           <span className={s.stateRow}>
-            <StateLine state={app.line} size={11} />
-            <span>{app.line === "running" ? (uptime ? `Up ${uptime}` : "Running") : app.line === "unhealthy" || app.line === "attention" ? app.summary : lineLabel(app.line)}</span>
+            <StateLine state={mark?.state ?? app.line} size={11} />
+            <span>{mark ? mark.word : app.line === "running" ? (uptime ? `Up ${uptime}` : "Running") : app.line === "attention" ? app.summary : lineLabel(app.line)}</span>
           </span>
         </div>
         {href && (

@@ -10,8 +10,7 @@ import { useSmartUrl } from "./widgets/core";
 import { SetUp, WidgetState } from "./widgets/kit";
 import { useHome } from "./context";
 import type { StatusPayload } from "@/server/status";
-import { findingWord } from "@/lib/finding-words";
-import { trouble } from "@/components/apps/plain";
+import { appMark } from "@/lib/app-health";
 import { RemedyButton } from "@/components/status/NeedsYou";
 import { api, ApiError, useApi, STATUS_KEY, STATUS_REFRESH } from "@/lib/client/api";
 import { usePrefs } from "@/components/PrefsProvider";
@@ -30,10 +29,9 @@ type Line = ApiApp["line"];
 const QUIET: Line[] = ["running"];
 const WORD: Partial<Record<Line, string>> = { stopped: "Stopped", unhealthy: "Not working", starting: "Starting", attention: "Needs you", paused: "Paused", unknown: "Unknown" };
 
+/** For an app that doesn't need a hand; one that does takes its mark and words from appMark, as Apps does. */
 function stateWord(app: ApiApp): string | null {
   if (QUIET.includes(app.line)) return null;
-  // Same plain words as Apps and Status ("Keeps restarting"), not Docker's summary.
-  if (app.line === "unhealthy") return trouble({ ...app, containers: app.containers ?? [] }) ?? WORD.unhealthy!;
   if (app.line === "attention") return app.summary || WORD.attention!;
   return WORD[app.line] ?? app.summary;
 }
@@ -109,7 +107,8 @@ export function AppCardWidget({ item, size, openSettings, editing }: WidgetProps
   const stopped = app.line === "stopped";
   const finding = status?.findings.filter((f) => f.subject === app.id).sort((a, b) => (a.severity === "fault" ? -1 : b.severity === "fault" ? 1 : 0))[0];
   // A finding ("not answering") turns the card into the broken one, even while Docker says running.
-  const word = finding ? findingWord(finding) : stateWord(app);
+  const mark = appMark({ ...app, containers: app.containers ?? [] }, finding);
+  const word = mark ? mark.word : stateWord(app);
   // The hero names the problem and holds the fix; unless it's on Home showing its button, the fix sits on the card.
   const fix = finding?.remedy && !home.heroFix && !editing ? finding.remedy : null;
   const uptime = !stopped ? uptimeOf(app) : null;
@@ -136,7 +135,7 @@ export function AppCardWidget({ item, size, openSettings, editing }: WidgetProps
   // Second line: what's wrong if anything, else which copy it is, else (bigger sizes) how long it's been up.
   const upWord = uptime ? `Up ${uptime}` : null;
   const sub = word ?? hint ?? upWord;
-  const line: Line = finding ? (finding.severity === "fault" ? "unhealthy" : "attention") : app.line;
+  const line: Line = mark ? mark.state : app.line;
   // Mark and word together: the line for state words and uptime, none for a copy's hint.
   const marked = !!word || (!hint && !!upWord);
   const label = `Open ${app.name}${hint ? ` (${hint})` : ""}${word ? `. ${word}` : ""}`;
@@ -205,7 +204,7 @@ export function AppCardWidget({ item, size, openSettings, editing }: WidgetProps
   ) : null;
 
   const state = line;
-  const tipped = !!finding || app.line === "unhealthy" ? "" : undefined;
+  const tipped = mark ? "" : undefined;
   if (fix && href) {
     // A link can't hold a button: the face opens the app, the fix sits beside it.
     return (
