@@ -8,9 +8,19 @@
 //   - if the peer is not a private address (loopback, Docker bridge, LAN, Tailscale), every
 //     forwarding header is dropped too, so Next falls back to the socket for XFF/proto/host.
 // The zone logic itself (reading the right end of the XFF chain) lives in src/server/net-zone.ts.
+//
+// It also sizes libuv's thread pool and bounds shutdown; see below.
 "use strict";
 const http = require("node:http");
 const net = require("node:net");
+const os = require("node:os");
+
+// File I/O, DNS lookups, zlib, crypto, argon2 and sharp all share libuv's pool (4 threads by default).
+// Thumbnails alone can fill four, and then every stat and readFile waits behind them. libuv reads this
+// when the pool is first used, which is after this point.
+if (!process.env.UV_THREADPOOL_SIZE) {
+  process.env.UV_THREADPOOL_SIZE = String(Math.min(64, Math.max(8, os.availableParallelism() * 2)));
+}
 
 const PEER = "x-gluon-peer";
 const FORWARDING = ["x-forwarded-for", "x-forwarded-proto", "x-forwarded-host", "x-forwarded-port", "x-real-ip", "forwarded", "cf-connecting-ip", "true-client-ip"];
@@ -54,8 +64,10 @@ function stamp(req) {
   if (peer) headers[PEER] = peer;
 }
 
+const servers = new Set();
 const emit = http.Server.prototype.emit;
 http.Server.prototype.emit = function gluonStampedEmit(event, req, ...rest) {
+  if (event === "listening") servers.add(this);
   if ((event === "request" || event === "upgrade" || event === "checkContinue" || event === "checkExpectation") && req && req.headers) {
     try {
       stamp(req);
@@ -68,6 +80,19 @@ http.Server.prototype.emit = function gluonStampedEmit(event, req, ...rest) {
   }
   return emit.call(this, event, req, ...rest);
 };
+
+// Next stops accepting on SIGTERM and exits once open requests finish, but live views (event streams,
+// logs, terminals) never finish on their own. After a short drain, close what is left so the exit
+// happens inside Docker's default 10s stop timeout instead of ending in SIGKILL.
+const DRAIN_MS = Number(process.env.GLUON_DRAIN_MS) || 5000;
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.once(signal, () => {
+    setTimeout(() => {
+      for (const s of servers) s.closeAllConnections();
+    }, DRAIN_MS).unref();
+    setTimeout(() => process.exit(signal === "SIGINT" ? 130 : 143), DRAIN_MS + 3000).unref();
+  });
+}
 
 process.env.GLUON_PEER_HEADER = "1";
 require("./server.js");
