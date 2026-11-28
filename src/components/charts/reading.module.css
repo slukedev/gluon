@@ -28,3 +28,9 @@
 .reading[data-size="sm"] .figure { font-size: 1.375rem; }
 .reading[data-size="sm"] .context { margin-top: 1px; line-height: 1.3; }
 .reading[data-size="sm"] .chart { margin-top: 5px; }
+
+/* The narrowest phones: a fixed-height tile can't take a second context line and still show the graph, so the
+   line keeps the parts that fit whole and drops the rest. */
+@media (max-width: 359px) {
+  .context { max-height: 1lh; }
+}

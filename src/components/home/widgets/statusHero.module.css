@@ -59,3 +59,7 @@
   .why { font-size: var(--text-sm); -webkit-line-clamp: 3; }
   .words:not(:has(.act)) .why { -webkit-line-clamp: 5; }
 }
+/* The narrowest phones: the coil steps back so the sentence keeps its width. */
+@media (max-width: 400px) {
+  .hero, .hero:is([data-size="w"], [data-size="l"]) { grid-template-columns: minmax(0, 1fr) 64px; gap: 6px 12px; }
+}
