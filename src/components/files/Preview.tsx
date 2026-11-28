@@ -53,6 +53,12 @@ export function Preview({ entry: open, siblings, onNavigate, onClose, canWrite, 
     },
     [dirty, confirm],
   );
+  React.useEffect(() => {
+    if (!dirty || !open) return;
+    const hold = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", hold);
+    return () => window.removeEventListener("beforeunload", hold);
+  }, [dirty, open]);
   const idx = entry ? siblings.findIndex((x) => x.path === entry.path) : -1;
   const prev = idx > 0 ? siblings[idx - 1] : undefined;
   const next = idx >= 0 && idx < siblings.length - 1 ? siblings[idx + 1] : undefined;
@@ -246,6 +252,13 @@ function thumbBg(entry: FileEntry): React.CSSProperties | undefined {
   return THUMBABLE.test(entry.name) ? { backgroundImage: `url("${thumbUrl(entry, 480)}")`, backgroundSize: "contain", backgroundRepeat: "no-repeat", backgroundPosition: "center" } : undefined;
 }
 
+/** Counts lines only as far as `max`, so a megabyte file isn't split on every keystroke. */
+function linesUpTo(text: string, max: number): number {
+  let n = 1;
+  for (let i = text.indexOf("\n"); i >= 0 && n < max; i = text.indexOf("\n", i + 1)) n++;
+  return n;
+}
+
 function langOf(t: TextFile | undefined): CodeLanguage {
   return (t?.language as CodeLanguage | null) ?? "text";
 }
@@ -299,8 +312,8 @@ function TextPreview({ entry, canWrite, onDirty, onSaved, confirm }: { entry: Fi
   }
   const reading = isMarkdown && mode === "read" && !editing;
   // Fit short files instead of framing three lines in a tall empty box.
-  const lines = (editing ? draft : (data.content ?? "")).split("\n").length;
-  const height = `min(62dvh, ${Math.max(6, Math.min(lines, 40)) * 19 + 18}px)`;
+  const lines = linesUpTo(editing ? draft : (data.content ?? ""), 40);
+  const height = `min(62dvh, ${Math.max(6, lines) * 19 + 18}px)`;
   return (
     <div className={s.textPreview}>
       <div className={s.textBar}>
