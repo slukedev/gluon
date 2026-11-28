@@ -36,8 +36,9 @@ test("an admin invites a household member, who can't reach admin pages", async (
   await clickToOpen(member.getByRole("button", { name: "Skip to Home" }), member.getByRole("heading", { level: 1, name: "Home" }));
 
   const nav = await openMainNav(member);
-  await expect(nav.getByRole("link")).toHaveCount(1);
-  await expect(nav.getByRole("link")).toHaveAccessibleName(/^Home( \d+ needs? you)?$/);
+  await expect(nav.getByRole("link")).toHaveCount(2);
+  await expect(nav.getByRole("link").first()).toHaveAccessibleName(/^Home( \d+ needs? you)?$/);
+  await expect(nav.getByRole("link").last()).toHaveAccessibleName("Settings");
   const menu = await openAccountMenu(member);
   await expect(menu.getByRole("menuitem", { name: "Sign out" })).toBeVisible();
   await member.keyboard.press("Escape");
