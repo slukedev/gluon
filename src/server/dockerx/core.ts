@@ -1,6 +1,6 @@
 import "server-only";
 import type Docker from "dockerode";
-import { docker } from "../docker/client";
+import { docker, DOCKER_DOWN_MESSAGE } from "../docker/client";
 import { containerLine, listApps, isUmbrelManaged, type AppSummary } from "../docker/apps";
 import { findUmbrel } from "../platform/umbrel";
 import { activePlatform } from "../platform";
@@ -67,7 +67,7 @@ export function isDockerDown(e: unknown): boolean {
   return code === "ECONNREFUSED" || code === "ENOENT" || code === "EACCES" || code === "ECONNRESET" || code === "EPIPE";
 }
 
-export const DOCKER_DOWN_MESSAGE = "Can't reach Docker. Check that Docker is running on the server and that Gluon's container has /var/run/docker.sock mounted.";
+export { DOCKER_DOWN_MESSAGE };
 
 export function dockerError(e: unknown, doing: string): AppError {
   if (e instanceof AppError) return e;

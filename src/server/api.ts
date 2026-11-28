@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { AppError, fieldWords, ownIssueMessage } from "./errors";
 import { CommandError } from "./host/exec";
+import { DOCKER_DOWN_MESSAGE, dockerUnreachable } from "./docker/client";
 import { currentAuth, hasRecentAuth, mustSetUpMfa, pendingAuth, type Session } from "./auth/session";
 import { mfaRequiredMessage } from "./auth/policy";
 import type { User } from "./auth/users";
@@ -205,6 +206,8 @@ export function route<B, Q>(opts: Options<B, Q>, fn: Handler<B, Q> | PublicHandl
           ? errorResponse("command_failed", e.message || "The server couldn't finish that.", 500, { command: e.cmd.split(" ").slice(0, 8).join(" ") })
           : errorResponse("command_failed", "The server couldn't finish that. Try again; the details are in the server log.", 500);
       }
+      // A route that reached Docker without wrapping its errors still answers in the shared words, not "internal".
+      if (dockerUnreachable(e)) return errorResponse("docker_down", DOCKER_DOWN_MESSAGE, 503);
       console.error("[gluon] unhandled", e);
       return errorResponse("internal", "Something went wrong on the server. Try again; the details are in the server log.", 500);
     }
