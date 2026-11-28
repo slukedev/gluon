@@ -26,6 +26,7 @@ export class LiveSession {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private chain: Promise<unknown> = Promise.resolve();
   private pendingResize: { rows: number; cols: number } | null = null;
+  private resizeTimer: ReturnType<typeof setTimeout> | null = null;
   private ended = false;
   readonly done: Promise<void>;
 
@@ -88,8 +89,15 @@ export class LiveSession {
       this.pendingResize = { rows, cols };
       return;
     }
-    this.pendingResize = null;
-    this.post({ resize: { rows, cols } });
+    // Dragging a window edge resizes every frame; the shell only needs the size it settles on.
+    this.pendingResize = { rows, cols };
+    if (this.resizeTimer) clearTimeout(this.resizeTimer);
+    this.resizeTimer = setTimeout(() => {
+      this.resizeTimer = null;
+      const size = this.pendingResize;
+      this.pendingResize = null;
+      if (size && !this.ended) this.post({ resize: size });
+    }, 80);
   }
 
   stop() {
@@ -104,7 +112,9 @@ export class LiveSession {
   close() {
     this.ended = true;
     if (this.timer) clearTimeout(this.timer);
+    if (this.resizeTimer) clearTimeout(this.resizeTimer);
     this.timer = null;
+    this.resizeTimer = null;
     this.abort.abort();
   }
 

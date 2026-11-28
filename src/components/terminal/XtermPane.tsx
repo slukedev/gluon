@@ -88,7 +88,11 @@ export default function XtermPane({ target, label, cwd, active, launch }: XtermP
     };
     el.addEventListener("keydown", stopCtrl);
 
-    const ro = new ResizeObserver(refit);
+    let frame = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(refit);
+    });
     ro.observe(el);
     const retheme = () => {
       t.options.theme = readTheme(el).theme;
@@ -98,6 +102,7 @@ export default function XtermPane({ target, label, cwd, active, launch }: XtermP
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     mq.addEventListener("change", retheme);
     return () => {
+      cancelAnimationFrame(frame);
       ro.disconnect();
       mo.disconnect();
       mq.removeEventListener("change", retheme);
