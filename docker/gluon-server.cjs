@@ -54,8 +54,10 @@ function stamp(req) {
   if (peer) headers[PEER] = peer;
 }
 
+const servers = new Set();
 const emit = http.Server.prototype.emit;
 http.Server.prototype.emit = function gluonStampedEmit(event, req, ...rest) {
+  servers.add(this);
   if ((event === "request" || event === "upgrade" || event === "checkContinue" || event === "checkExpectation") && req && req.headers) {
     try {
       stamp(req);
@@ -68,6 +70,20 @@ http.Server.prototype.emit = function gluonStampedEmit(event, req, ...rest) {
   }
   return emit.call(this, event, req, ...rest);
 };
+
+// On `docker stop`, Next stops accepting connections and waits for open ones to finish, but live
+// streams (events, logs, terminals) never do, so it would sit there until Docker kills it. Give
+// requests a few seconds, then close what's left so Next can finish shutting down on its own.
+process.once("SIGTERM", () => {
+  setTimeout(() => {
+    for (const s of servers) s.closeIdleConnections?.();
+  }, 2000).unref();
+  setTimeout(() => {
+    for (const s of servers) s.closeAllConnections?.();
+  }, 8000).unref();
+  // Docker's grace period is 20 s; leave on our own terms before it kills the process.
+  setTimeout(() => process.exit(143), 15_000).unref();
+});
 
 process.env.GLUON_PEER_HEADER = "1";
 require("./server.js");
