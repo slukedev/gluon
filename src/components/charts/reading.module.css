@@ -15,8 +15,12 @@
 }
 .figure small { margin-left: 3px; font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 450; font-stretch: 96%; letter-spacing: 0; color: var(--muted); }
 .figure small[data-tight] { margin-left: 1px; }
-.context { margin: 3px 0 0; font-size: var(--text-xs); line-height: 1.35; color: var(--muted); font-variant-numeric: tabular-nums; }
+.context { margin: 3px 0 0; font-size: var(--text-xs); line-height: 1.35; color: var(--muted); font-variant-numeric: tabular-nums; overflow: hidden; }
+/* Each part carries its dot in front; the row starts one dot early and clips it, so a wrapped line never
+   ends or starts on a dangling "·". */
+.parts { display: flex; flex-wrap: wrap; margin-left: -0.9em; }
 .part { white-space: nowrap; }
+.part::before { content: "·"; display: inline-block; width: 0.9em; text-align: center; }
 /* Charts sit on a shared floor, so a row of readings lines up even when one context wraps. */
 .chart { align-self: end; margin-top: 8px; min-width: 0; }
 

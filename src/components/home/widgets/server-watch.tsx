@@ -10,9 +10,10 @@ import type { DiskView, Inventory } from "@/lib/storage-types";
 import type { StatusPayload } from "@/server/status";
 import type { LineState } from "@/lib/types";
 import { useApi, STATUS_KEY, STATUS_REFRESH } from "@/lib/client/api";
-import { useLive } from "@/lib/client/live";
+import { useLiveHost } from "@/lib/client/live";
 import { useFormat } from "@/components/PrefsProvider";
 import { Skeleton } from "@/components/ui/Surface";
+import { LinkButton } from "@/components/ui/Button";
 import { StateLine } from "@/components/ui/StateLine";
 import { Field, Segmented } from "@/components/ui/Field";
 import { Time } from "@/components/ui/Time";
@@ -66,15 +67,14 @@ function UptimeWidget({ size }: WidgetProps) {
 
   if (!watched.length) {
     return (
-      <div className={w.body}>
-        <p className={w.headline}>
-          <StateLine state="stopped" label={false} size={18} />
-          <span>Nothing is being watched</span>
-        </p>
-        <Link href={alertsHref()} className={w.more}>
-          Watch an address
-        </Link>
-      </div>
+      <WidgetState
+        title="Nothing is being watched"
+        action={
+          <LinkButton href={alertsHref()} size="sm">
+            Watch an address
+          </LinkButton>
+        }
+      />
     );
   }
 
@@ -317,7 +317,7 @@ function BusyWidget({ item, size }: WidgetProps<BusyConfig>) {
   const { data, error, mutate } = useApi<StatusPayload>(STATUS_KEY, { refresh: STATUS_REFRESH });
   const apps = React.useMemo(() => (data?.apps ?? []).filter((a) => a.line !== "stopped"), [data]);
   const usage = useAppUsage(apps);
-  const { host, status } = useLive();
+  const { host, status } = useLiveHost();
   const ranked = apps
     .map((a) => ({ a, u: usage.get(a.id) }))
     .filter((x): x is { a: (typeof apps)[number]; u: NonNullable<typeof x.u> } => !!x.u)

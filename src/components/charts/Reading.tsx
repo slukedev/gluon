@@ -33,13 +33,13 @@ export function Reading({
         </span>
       </div>
       <p className={r.context} aria-hidden>
-        {/* Parts never break inside, so a narrow tile wraps at the dots. */}
-        {g.context.split(" · ").map((part, i) => (
-          <span key={i}>
-            {i > 0 && " · "}
-            <span className={r.part}>{part}</span>
-          </span>
-        ))}
+        <span className={r.parts}>
+          {g.context.split(" · ").map((part, i) => (
+            <span key={i} className={r.part}>
+              {part}
+            </span>
+          ))}
+        </span>
       </p>
       <div className={r.chart}>
         <TimeChart
