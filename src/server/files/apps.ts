@@ -8,6 +8,7 @@ import { AppError, badRequest, notFound } from "../errors";
 import { hostPath, isWithin, normalizeHostPath } from "../host/paths";
 import { localSpawn } from "../host/exec";
 import { docker } from "../docker/client";
+import { dockerError } from "../dockerx/core";
 import { listApps, type AppSummary } from "../docker/apps";
 import type { User } from "../auth/users";
 import type { AppUse, FileJob, OwnershipPreview, RunsAs } from "@/lib/files-types";
@@ -82,7 +83,7 @@ export function runsAs(info: Docker.ContainerInspectInfo): RunsAs | null {
 
 export async function usedBy(user: User, p: string): Promise<{ path: string; uses: AppUse[] }> {
   const t = await authorize(user, p, "read");
-  const [containers, apps] = await Promise.all([docker().listContainers({ all: true }), listApps().catch(() => [] as AppSummary[])]);
+  const [containers, apps] = await Promise.all([docker().listContainers({ all: true }).catch((e: unknown) => Promise.reject(dockerError(e, "Couldn't list the apps"))), listApps().catch(() => [] as AppSummary[])]);
   const appOf = new Map<string, AppSummary>();
   for (const a of apps) for (const c of a.containers) appOf.set(c.id, a);
   const resolved = new Map<string, string>();

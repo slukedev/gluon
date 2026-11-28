@@ -162,7 +162,11 @@ export function UsedBy({ path, onFixOwnership }: { path: string; onFixOwnership?
           </Button>
         )}
       </div>
-      {error ? (
+      {error?.code === "docker_down" ? (
+        <p className="muted" style={{ fontSize: "var(--text-sm)" }}>
+          Can't reach Docker to see which apps use it.
+        </p>
+      ) : error ? (
         <Notice tone="fault">{error.message}</Notice>
       ) : !data ? (
         <Skeleton height={48} />
