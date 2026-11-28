@@ -37,6 +37,7 @@ type G = typeof globalThis & {
   __gluonUpdateCheck?: Check;
   __gluonUpdateChecking?: { channel: UpdateChannel; promise: Promise<Check> };
   __gluonUpdateWatch?: ReturnType<typeof setInterval> | null;
+  __gluonUpdateWatching?: boolean;
   __gluonUpdateStarting?: boolean;
 };
 const g = globalThis as G;
@@ -271,7 +272,13 @@ async function watch() {
   const still = one<{ n: number }>("SELECT COUNT(*) AS n FROM self_updates WHERE outcome = 'running'")!.n;
   if (still && !g.__gluonUpdateWatch) {
     g.__gluonUpdateWatch = setInterval(() => {
-      void watch().then(() => publish("updates", { at: Date.now() }));
+      // A slow systemctl must not stack a second check behind the first.
+      if (g.__gluonUpdateWatching) return;
+      g.__gluonUpdateWatching = true;
+      void watch()
+        .then(() => publish("updates", { at: Date.now() }))
+        .catch((e: unknown) => console.error("[gluon] update watch failed", e))
+        .finally(() => (g.__gluonUpdateWatching = false));
     }, 3000);
     g.__gluonUpdateWatch.unref?.();
   } else if (!still && g.__gluonUpdateWatch) {
