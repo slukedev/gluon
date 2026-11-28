@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Plus, Trash } from "iconoir-react";
 import { api, useApi, ApiError } from "@/lib/client/api";
 import { usePrefs } from "@/components/PrefsProvider";
@@ -8,6 +9,7 @@ import { AffixInput, Field, Input, Switch, SettingRow } from "@/components/ui/Fi
 import { Button, IconButton } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { toast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/Dialog";
 import { WorksWith } from "./WorksWith";
 import s from "./settings.module.css";
 
@@ -72,6 +74,45 @@ function NumberInput({ value, min, max, unit, label, className, onChange }: { va
   );
 }
 
+/** Unsaved edits: the browser asks before the tab closes or reloads, and Gluon asks before a link leads away. */
+function useLeaveGuard(dirty: boolean, discard: () => void): React.ReactNode {
+  const router = useRouter();
+  const [confirm, node] = useConfirm();
+  const discardRef = React.useRef(discard);
+  React.useEffect(() => {
+    discardRef.current = discard;
+  });
+  React.useEffect(() => {
+    if (!dirty) return;
+    const onUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement).closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!a || e.defaultPrevented || a.target === "_blank" || a.hasAttribute("download") || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+      const url = new URL(a.href, window.location.href);
+      if (url.origin !== window.location.origin || url.pathname + url.search === window.location.pathname + window.location.search) return;
+      e.preventDefault();
+      e.stopPropagation();
+      confirm({
+        title: "Leave without saving?",
+        description: "Your changes to the server settings haven't been saved.",
+        confirmLabel: "Leave without saving",
+        variant: "danger",
+        onConfirm: () => {
+          discardRef.current();
+          router.push(url.pathname + url.search + url.hash);
+        },
+      });
+    };
+    window.addEventListener("beforeunload", onUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onUnload);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [dirty, confirm, router]);
+  return node;
+}
+
 export function Server() {
   const { data, error: loadError, mutate } = useApi<ServerSettings>("/api/settings/server");
   const { viewer } = usePrefs();
@@ -83,6 +124,8 @@ export function Server() {
   React.useEffect(() => {
     if (data && !f) setF(data);
   }, [data, f]);
+  const dirty = !!f && !!data && JSON.stringify({ ...f, detectedPrefixes: [] }) !== JSON.stringify({ ...data, detectedPrefixes: [] });
+  const leaveNode = useLeaveGuard(dirty, () => setF(data ?? null));
   if ((!f || !data) && loadError) {
     return (
       <Notice tone="fault" title="Couldn't load the server settings" action={<Button size="sm" onClick={() => void mutate()}>Try again</Button>}>
@@ -102,7 +145,6 @@ export function Server() {
   }
 
   const inlineError = error?.field === "serverName" || error?.field === "publicHost" || !!error?.field?.startsWith("homeNetworks");
-  const dirty = JSON.stringify({ ...f, detectedPrefixes: [] }) !== JSON.stringify({ ...data, detectedPrefixes: [] });
   const set = <K extends keyof ServerSettings>(k: K, v: ServerSettings[K]) => setF((p) => (p ? { ...p, [k]: v } : p));
   const setT = (k: keyof ServerSettings["thresholds"], v: number) => setF((p) => (p ? { ...p, thresholds: { ...p.thresholds, [k]: v } } : p));
 
@@ -270,6 +312,7 @@ export function Server() {
           Save changes
         </Button>
       </div>
+      {leaveNode}
     </div>
   );
 }
