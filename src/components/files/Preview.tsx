@@ -401,6 +401,7 @@ function TextPreview({ entry, canWrite, onDirty, onSaved, confirm }: { entry: Fi
           value={editing ? draft : (data.content ?? "")}
           onChange={editing ? setDraft : undefined}
           readOnly={!editing}
+          autoFocus={editing}
           language={langOf(data)}
           height={height}
         />

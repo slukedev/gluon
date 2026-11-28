@@ -58,9 +58,10 @@ export interface CodeEditorProps {
   original?: string;
   height?: number | string;
   label: string;
+  autoFocus?: boolean;
 }
 
-export function CodeEditor({ value, onChange, language = "text", readOnly, original, height = 480, label }: CodeEditorProps) {
+export function CodeEditor({ value, onChange, language = "text", readOnly, original, height = 480, label, autoFocus }: CodeEditorProps) {
   const host = React.useRef<HTMLDivElement>(null);
   const view = React.useRef<EditorView | null>(null);
   const onChangeRef = React.useRef(onChange);
@@ -100,6 +101,7 @@ export function CodeEditor({ value, onChange, language = "text", readOnly, origi
         ],
       });
       view.current = new EditorView({ state, parent: host.current });
+      if (autoFocus) view.current.focus();
     })();
     return () => {
       cancelled = true;
