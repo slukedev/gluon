@@ -238,5 +238,5 @@ function FrontSummary({ places }: { places: Places | undefined }) {
     return <>{shares.length ? `${fmt.plural(shares.length, "folder")} shared with you.` : "Your pinned folders."}</>;
   }
   const free = drives.reduce((a, d) => a + (d.fs?.avail ?? 0), 0);
-  return <span className="num">{drives.length ? `${fmt.bytes(free)} free across ${fmt.plural(drives.length, "drive")}.` : "Every folder on the server."}</span>;
+  return <span className="num">{drives.length ? `${fmt.bytes(free)} free across ${fmt.plural(drives.length, "drive")}.` : "Free space can't be measured here."}</span>;
 }

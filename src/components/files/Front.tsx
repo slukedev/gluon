@@ -49,7 +49,7 @@ export const Front = React.memo(function Front() {
 
   return (
     <div className={s.front} data-files-keys="">
-      <Shelf title="Changed in the last two weeks" state={recent} sort="mtime" withFolder empty="Nothing changed in the last two weeks." />
+      <Shelf title="Changed in the last two weeks" state={recent} sort="mtime" withFolder empty="No files changed." />
       <PlacesRack />
       {/* Later shelves wait their turn unseen, arrive only with something in them and stay away when they find nothing. */}
       {specs[1] && <Shelf title="Photos" state={photos} sort="mtime" filter={(h) => !COVER.test(h.name)} later />}
