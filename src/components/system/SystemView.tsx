@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import type { LiveLogins, MemoryBreakdown, PowerStatus, ServiceInfo, SystemOverview, UpdatesStatus } from "@/lib/system-types";
-import { useApi, useStream, type ApiError } from "@/lib/client/api";
+import { useApi, useStream } from "@/lib/client/api";
 import { useFormat } from "@/components/PrefsProvider";
 import { Page, PageHeader, Skeleton } from "@/components/ui/Surface";
 import { Tabs } from "@/components/ui/Tabs";
@@ -11,7 +11,7 @@ import { ServicesTab, ServicesSkeleton } from "./ServicesTab";
 import { PowerTab, PowerSkeleton } from "./PowerTab";
 import { SignInsTab, SignInsSkeleton } from "./SignInsTab";
 import { peopleList } from "./loginWords";
-import { hostFailure } from "./hostFailure";
+import { checkState, checksSummary } from "./hostFailure";
 import s from "./system.module.css";
 
 export type SystemTab = "overview" | "updates" | "services" | "sign-ins" | "power";
@@ -32,15 +32,6 @@ export function updatesOverdue(u: UpdatesStatus | undefined): boolean {
   if (!u) return false;
   const t = Date.now();
   return (!!u.oldestSecurityAt && u.counts.security > 0 && t - u.oldestSecurityAt > 3 * DAY) || (!!u.oldestPendingAt && t - u.oldestPendingAt > 30 * DAY);
-}
-
-function unreadSummary(updatesError: ApiError | null, servicesError: ApiError | null): string {
-  const failed = [updatesError && "updates", servicesError && "services"].filter(Boolean) as string[];
-  if (!failed.length) return "Checking updates and services.";
-  const list = failed.join(" and ");
-  const missing = [updatesError, servicesError].every((e) => !e || hostFailure(e).kind === "missing");
-  if (missing) return `${list[0]!.toUpperCase()}${list.slice(1)} ${failed.length > 1 ? "aren't" : "isn't"} available on this server.`;
-  return `Couldn't check ${list}.`;
 }
 
 // The header and the tab below read the same SWR keys at the same pace, so their polls coincide.
@@ -174,23 +165,22 @@ function SystemHeadLive({ tab, initial }: { tab: SystemTab; initial: SystemIniti
     parts.push(`${peopleList(people)} ${people.length === 1 ? "is" : "are"} signed in over SSH.`);
   }
 
-  const summary =
-    lead || parts.length ? (
-      <>
-        {lead && <b>{lead}</b>} {parts.join(" ")}
-      </>
-    ) : u && services.data && !updates.error && !services.error ? (
-      // "Up to date" only when apt actually answered; a failed or missing check is not a clean bill.
-      u.lastRefresh.ok === false ? (
-        "Everything is running. Couldn't check for updates."
-      ) : !u.lastRefresh.at ? (
-        "Everything is running. Updates haven't been checked yet."
-      ) : (
-        "Everything is running and up to date."
-      )
-    ) : (
-      unreadSummary(updates.error && !u ? updates.error : null, services.error && !services.data ? services.error : null)
-    );
+  const hasNews = !!lead || parts.length > 0;
+  const checks = checksSummary({
+    updates: checkState(u, updates.error),
+    services: checkState(services.data, services.error),
+    servicesQuiet: failed.length === 0,
+    // "Up to date" only when apt actually answered; a failed or missing check is not a clean bill.
+    updatesQuiet: !u || u.activeRun || u.counts.total > 0 || u.reboot.required ? null : u.lastRefresh.ok === false ? "refresh-failed" : !u.lastRefresh.at ? "unchecked" : "current",
+    hasNews,
+  });
+  const summary = hasNews ? (
+    <>
+      {lead && <b>{lead}</b>} {[...parts, checks].filter(Boolean).join(" ")}
+    </>
+  ) : (
+    checks
+  );
 
   return (
     <SystemHead

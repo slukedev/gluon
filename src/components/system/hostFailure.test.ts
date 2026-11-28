@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hostFailure } from "./hostFailure";
+import { checkState, checksSummary, hostFailure } from "./hostFailure";
 
 describe("hostFailure", () => {
   it("reads a program the host doesn't have as missing, not broken", () => {
@@ -21,5 +21,41 @@ describe("hostFailure", () => {
 
   it("keeps a missing file inside a working program a real failure", () => {
     expect(hostFailure({ message: "E: Could not open lock file /var/lib/dpkg/lock - open (2: No such file or directory)" }).kind).toBe("other");
+  });
+});
+
+describe("checksSummary", () => {
+  const base = { servicesQuiet: true, updatesQuiet: "current" as const, hasNews: false };
+  const aptGone = { message: "spawn apt ENOENT", details: { command: "apt list --upgradable" } };
+
+  it("reads stale data as answered, no data and no error as still loading", () => {
+    expect(checkState({ list: [] }, { message: "Timed out" })).toBe("ok");
+    expect(checkState(undefined, null)).toBe("loading");
+    expect(checkState(undefined, aptGone)).toBe("missing");
+    expect(checkState(undefined, { message: "Timed out: apt" })).toBe("failed");
+  });
+
+  it("names the check that's still loading when the other one failed", () => {
+    expect(checksSummary({ ...base, updates: "loading", services: "failed" })).toBe("Couldn't check services. Still checking updates.");
+  });
+
+  it("gives the all-clear only for the check that answered", () => {
+    expect(checksSummary({ ...base, updates: "loading", services: "ok" })).toBe("Everything is running. Still checking updates.");
+    expect(checksSummary({ ...base, updates: "ok", services: "failed" })).toBe("Up to date. Couldn't check services.");
+    expect(checksSummary({ ...base, updates: "ok", services: "ok" })).toBe("Everything is running and up to date.");
+    expect(checksSummary({ ...base, updates: "ok", services: "ok", updatesQuiet: "refresh-failed" })).toBe("Everything is running. Couldn't check for updates.");
+  });
+
+  it("says each kind of gap once, joined", () => {
+    expect(checksSummary({ ...base, updates: "loading", services: "loading" })).toBe("Checking updates and services.");
+    expect(checksSummary({ ...base, updates: "failed", services: "failed" })).toBe("Couldn't check updates or services.");
+    expect(checksSummary({ ...base, updates: "missing", services: "failed" })).toBe("Couldn't check services. Updates can't be checked on this server.");
+    expect(checksSummary({ ...base, updates: "missing", services: "missing" })).toBe("Updates and services can't be checked on this server.");
+  });
+
+  it("adds only the gaps after news, never a contradicting all-clear", () => {
+    expect(checksSummary({ ...base, hasNews: true, updates: "ok", services: "ok" })).toBe("");
+    expect(checksSummary({ ...base, hasNews: true, servicesQuiet: false, updates: "loading", services: "ok" })).toBe("Still checking updates.");
+    expect(checksSummary({ ...base, servicesQuiet: false, updates: "ok", services: "ok", updatesQuiet: null })).toBe("");
   });
 });
