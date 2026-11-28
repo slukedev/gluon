@@ -11,10 +11,16 @@ export function NameDialog({ open, onOpenChange, title, confirm, taken, initial,
     if (open) setName(initial);
   }, [open, initial]);
   const err = name ? serviceNameError(name) ?? (taken.includes(name) ? "Another service already has that name." : null) : null;
+  const [saving, setSaving] = React.useState(false);
   const submit = async () => {
-    if (!name || err) return;
-    await onDone(name);
-    onOpenChange(false);
+    if (!name || err || saving) return;
+    setSaving(true);
+    try {
+      await onDone(name);
+      onOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <Dialog
@@ -27,7 +33,7 @@ export function NameDialog({ open, onOpenChange, title, confirm, taken, initial,
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={!name || !!err} onClick={() => void submit()}>
+          <Button variant="primary" disabled={!name || !!err} loading={saving} onClick={() => void submit()}>
             {confirm}
           </Button>
         </>

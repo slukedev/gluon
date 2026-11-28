@@ -118,14 +118,18 @@ export function UsagePanel({ mounts, initialPath, onChanged }: { mounts: MountCh
     if (!data.running && !fresh) void start();
   }, [autoScan, data, path, start]);
 
+  const [stopping, setStopping] = React.useState(false);
   async function cancel() {
-    if (!data?.running) return;
+    if (!data?.running || stopping) return;
+    setStopping(true);
     try {
       await api.del(`/api/storage/operations/${encodeURIComponent(data.running.id)}`);
-      void mutate();
+      await mutate();
     } catch (e) {
       const m = errorText(e);
       if (m) toast.error(m);
+    } finally {
+      setStopping(false);
     }
   }
 
@@ -198,7 +202,7 @@ export function UsagePanel({ mounts, initialPath, onChanged }: { mounts: MountCh
             Open in Files
           </LinkButton>
           {run ? (
-            <Button size="sm" variant="ghost" onClick={() => void cancel()}>
+            <Button size="sm" variant="ghost" loading={stopping} onClick={() => void cancel()}>
               Stop scan
             </Button>
           ) : (
