@@ -8,11 +8,16 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: move-refs
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tag, release, and move latest
         env:
           GH_TOKEN: ${{ github.token }}

@@ -4,10 +4,25 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # A release has a few days to be pulled or patched before it is proposed here.
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 10
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
+    ignore:
+      # Node majors are moved by hand, to the next LTS line (with .nvmrc and engines).
+      - dependency-name: node
+        update-types: [version-update:semver-major]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
