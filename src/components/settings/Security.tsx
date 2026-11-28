@@ -77,7 +77,13 @@ function Password() {
   const [blockedUntil, setBlockedUntil] = React.useState<number | null>(null);
   const wait = useCountdown(blockedUntil);
 
+  const edit = (k: "current" | "next" | "confirm", v: string) => {
+    setF((p) => ({ ...p, [k]: v }));
+    if (error?.field === k) setError(null);
+  };
+
   function close() {
+    if (busy) return;
     setOpen(false);
     setError(null);
     setF({ current: "", next: "", confirm: "", signOutOthers: true });
@@ -148,16 +154,16 @@ function Password() {
         >
           <input type="text" name="username" autoComplete="username" value={viewer.username} readOnly hidden />
           <Field label="Current password" error={err("current")}>
-            <Input type="password" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} autoFocus maxLength={256} />
+            <Input type="password" autoComplete="current-password" value={f.current} onChange={(e) => edit("current", e.target.value)} autoFocus maxLength={256} />
           </Field>
           <div className={s.pair}>
             <Field label="New password" error={err("next")}>
-              <Input type="password" autoComplete="new-password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} maxLength={256} />
+              <Input type="password" autoComplete="new-password" value={f.next} onChange={(e) => edit("next", e.target.value)} maxLength={256} />
             </Field>
             <PasswordStrength value={f.next} context={[viewer.username, viewer.displayName]} />
           </div>
           <Field label="New password again" error={err("confirm")}>
-            <Input type="password" autoComplete="new-password" value={f.confirm} onChange={(e) => setF({ ...f, confirm: e.target.value })} maxLength={256} />
+            <Input type="password" autoComplete="new-password" value={f.confirm} onChange={(e) => edit("confirm", e.target.value)} maxLength={256} />
           </Field>
           <Checkbox checked={f.signOutOthers} onChange={(v) => setF({ ...f, signOutOthers: v })}>
             Sign out my other devices
@@ -386,12 +392,12 @@ function Devices() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't sign it out.");
     }
-    void mutate();
+    await mutate();
   }
   async function itWasMe(x: SessionRow) {
     try {
       await api.patch("/api/me/sessions", { id: x.id });
-      void mutate();
+      await mutate();
     } catch (e) {
       if (!(e instanceof ApiError && e.code === "reauth_cancelled")) toast.error(e instanceof Error ? e.message : "Couldn't do that.");
     }
@@ -461,7 +467,7 @@ function Devices() {
           </div>
           <ul className={s.devices} role="list" aria-label={summary ?? "Signed-in devices"}>
             {(showAll ? list : list.slice(0, FIRST)).map((x) => (
-              <DeviceRow key={x.id} x={x} now={now} onSignOut={() => void signOut(x)} onConfirm={() => void itWasMe(x)} />
+              <DeviceRow key={x.id} x={x} now={now} onSignOut={() => signOut(x)} onConfirm={() => itWasMe(x)} />
             ))}
           </ul>
           {list.length > FIRST && (
@@ -495,8 +501,14 @@ function Devices() {
 
 const pos = (t: number, now: number) => Math.max(0, Math.min(100, ((t - (now - 30 * DAY)) / (60 * DAY)) * 100));
 
-function DeviceRow({ x, now, onSignOut, onConfirm }: { x: SessionRow; now: number; onSignOut: () => void; onConfirm: () => void }) {
+function DeviceRow({ x, now, onSignOut, onConfirm }: { x: SessionRow; now: number; onSignOut: () => Promise<void>; onConfirm: () => Promise<void> }) {
   const fmt = useFormat();
+  const [pending, setPending] = React.useState<"out" | "me" | null>(null);
+  const run = (what: "out" | "me", act: () => Promise<void>) => {
+    if (pending) return;
+    setPending(what);
+    void act().finally(() => setPending(null));
+  };
   const name = device(x.userAgent);
   const start = pos(x.createdAt, now);
   const seen = pos(Math.min(x.lastSeenAt, now), now);
@@ -536,12 +548,12 @@ function DeviceRow({ x, now, onSignOut, onConfirm }: { x: SessionRow; now: numbe
       </div>
       <div className={s.deviceActions}>
         {x.newDevice && (
-          <Button size="sm" onClick={onConfirm}>
+          <Button size="sm" loading={pending === "me"} disabled={pending === "out"} onClick={() => run("me", onConfirm)}>
             That was me
           </Button>
         )}
         {!x.current && (
-          <Button size="sm" variant={x.newDevice ? "danger" : "ghost"} onClick={onSignOut}>
+          <Button size="sm" variant={x.newDevice ? "danger" : "ghost"} loading={pending === "out"} disabled={pending === "me"} onClick={() => run("out", onSignOut)}>
             Sign out
           </Button>
         )}

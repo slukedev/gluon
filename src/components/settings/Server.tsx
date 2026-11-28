@@ -43,34 +43,31 @@ const MFA_EXPLAIN: Record<MfaPolicy, string> = {
   off: "Nobody is asked for a code. Anyone can still turn it on for themselves.",
 };
 
-function DaysInput({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
-  return (
-    <AffixInput
-      type="number"
-      inputMode="numeric"
-      min={1}
-      max={90}
-      value={value}
-      onChange={(e) => onChange(Math.max(1, Math.min(90, Math.round(Number(e.target.value)) || 1)))}
-      after="days"
-      aria-label={label}
-      style={{ width: 64 }}
-    />
-  );
-}
-
-function Threshold({ value, min, max, unit, label, onChange }: { value: number; min: number; max: number; unit: string; label: string; onChange: (v: number) => void }) {
+/** Holds what's typed until it's a whole number in range, so a field can be cleared and retyped; leaving it puts back the last good value. */
+function NumberInput({ value, min, max, unit, label, className, onChange }: { value: number; min: number; max: number; unit: string; label: string; className?: string; onChange: (v: number) => void }) {
+  const [draft, setDraft] = React.useState(String(value));
+  const [prev, setPrev] = React.useState(value);
+  if (value !== prev) {
+    setPrev(value);
+    setDraft(String(value));
+  }
   return (
     <AffixInput
       type="number"
       inputMode="numeric"
       min={min}
       max={max}
-      value={value}
-      onChange={(e) => onChange(Number(e.target.value))}
+      step={1}
+      value={draft}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        const n = Number(e.target.value);
+        if (e.target.value !== "" && Number.isInteger(n) && n >= min && n <= max) onChange(n);
+      }}
+      onBlur={() => setDraft(String(value))}
       after={unit}
       aria-label={label}
-      className={s.unitInput}
+      className={className}
     />
   );
 }
@@ -104,6 +101,7 @@ export function Server() {
     );
   }
 
+  const inlineError = error?.field === "serverName" || error?.field === "publicHost" || !!error?.field?.startsWith("homeNetworks");
   const dirty = JSON.stringify({ ...f, detectedPrefixes: [] }) !== JSON.stringify({ ...data, detectedPrefixes: [] });
   const set = <K extends keyof ServerSettings>(k: K, v: ServerSettings[K]) => setF((p) => (p ? { ...p, [k]: v } : p));
   const setT = (k: keyof ServerSettings["thresholds"], v: number) => setF((p) => (p ? { ...p, thresholds: { ...p.thresholds, [k]: v } } : p));
@@ -203,17 +201,7 @@ export function Server() {
           </div>
         )}
         <SettingRow label="Shortest password" description="Applies to new passwords. Current ones keep working." stack>
-          <AffixInput
-            type="number"
-            inputMode="numeric"
-            min={4}
-            max={64}
-            value={f.passwordPolicy.minLength}
-            onChange={(e) => set("passwordPolicy", { ...f.passwordPolicy, minLength: Math.max(4, Math.min(64, Math.round(Number(e.target.value)) || 4)) })}
-            after="characters"
-            aria-label="Shortest password"
-            className={s.charsInput}
-          />
+          <NumberInput value={f.passwordPolicy.minLength} min={4} max={64} unit="characters" label="Shortest password" className={s.charsInput} onChange={(v) => set("passwordPolicy", { ...f.passwordPolicy, minLength: v })} />
         </SettingRow>
         {f.passwordPolicy.minLength < 8 && (
           <div className={s.noticeRow}>
@@ -229,10 +217,10 @@ export function Server() {
           <Switch checked={f.passwordPolicy.lettersAndNumbers} onChange={(v) => set("passwordPolicy", { ...f.passwordPolicy, lettersAndNumbers: v })} aria-label="Letters and numbers" />
         </SettingRow>
         <SettingRow label="Stay signed in at home for" description="Counted from the last visit.">
-          <DaysInput value={f.sessionDays} onChange={(v) => set("sessionDays", v)} label="Days at home" />
+          <NumberInput value={f.sessionDays} min={1} max={90} unit="days" label="Days at home" className={s.unitInput} onChange={(v) => set("sessionDays", v)} />
         </SettingRow>
         <SettingRow label="Stay signed in away from home for" description="Shorter suits phones and laptops. At most the home limit.">
-          <DaysInput value={f.awaySessionDays} onChange={(v) => set("awaySessionDays", v)} label="Days away" />
+          <NumberInput value={f.awaySessionDays} min={1} max={90} unit="days" label="Days away" className={s.unitInput} onChange={(v) => set("awaySessionDays", v)} />
         </SettingRow>
         <SettingRow label="Household can see server health" description="The “is everything working?” widget on their Home. No disks, logs or settings.">
           <Switch checked={f.householdCanSeeStatus} onChange={(v) => set("householdCanSeeStatus", v)} aria-label="Household can see server health" />
@@ -241,26 +229,26 @@ export function Server() {
 
       <Panel title="When to raise an alert">
         <SettingRow label="Disk needs attention at">
-          <Threshold value={f.thresholds.diskAttention} min={50} max={99} unit="% full" label="Disk needs attention at" onChange={(v) => setT("diskAttention", v)} />
+          <NumberInput className={s.unitInput} value={f.thresholds.diskAttention} min={50} max={99} unit="% full" label="Disk needs attention at" onChange={(v) => setT("diskAttention", v)} />
         </SettingRow>
         <SettingRow label="Disk is urgent at">
-          <Threshold value={f.thresholds.diskFault} min={50} max={100} unit="% full" label="Disk is urgent at" onChange={(v) => setT("diskFault", v)} />
+          <NumberInput className={s.unitInput} value={f.thresholds.diskFault} min={50} max={100} unit="% full" label="Disk is urgent at" onChange={(v) => setT("diskFault", v)} />
         </SettingRow>
         <SettingRow label="Memory needs attention at">
-          <Threshold value={f.thresholds.memoryAttention} min={50} max={100} unit="% used" label="Memory needs attention at" onChange={(v) => setT("memoryAttention", v)} />
+          <NumberInput className={s.unitInput} value={f.thresholds.memoryAttention} min={50} max={100} unit="% used" label="Memory needs attention at" onChange={(v) => setT("memoryAttention", v)} />
         </SettingRow>
         <SettingRow label="Processor too hot at">
-          <Threshold value={f.thresholds.tempAttention} min={40} max={110} unit="°C" label="Processor too hot at" onChange={(v) => setT("tempAttention", v)} />
+          <NumberInput className={s.unitInput} value={f.thresholds.tempAttention} min={40} max={110} unit="°C" label="Processor too hot at" onChange={(v) => setT("tempAttention", v)} />
         </SettingRow>
         <SettingRow label="Warn before certificates expire">
-          <Threshold value={f.thresholds.certDays} min={1} max={60} unit="days" label="Days of warning before certificates expire" onChange={(v) => setT("certDays", v)} />
+          <NumberInput className={s.unitInput} value={f.thresholds.certDays} min={1} max={60} unit="days" label="Days of warning before certificates expire" onChange={(v) => setT("certDays", v)} />
         </SettingRow>
       </Panel>
 
       {/* Rises from the bottom edge only while there's something to save, so it's in reach on a long page. */}
       <div className={s.saveBar} data-shown={dirty || busy ? "" : undefined} role="region" aria-label="Unsaved changes" inert={!dirty && !busy}>
         <span className={s.saveText}>
-          {error && !error.field ? (
+          {error && !inlineError ? (
             <span className={s.fieldError} role="alert">
               {error.message}
             </span>
@@ -272,6 +260,7 @@ export function Server() {
           variant="ghost"
           onClick={() => {
             setF(data);
+            setError(null);
             settleFocus();
           }}
         >
