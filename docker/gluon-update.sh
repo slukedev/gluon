@@ -32,6 +32,16 @@ WORK=""
 cleanup() { [ -n "$WORK" ] && rm -rf "$WORK"; }
 trap cleanup EXIT
 
+# One updater at a time, whoever started it: two would build over each other and fight over the container.
+if command -v flock >/dev/null 2>&1; then
+  mkdir -p /var/lib/gluon
+  exec 9>/var/lib/gluon/update.lock
+  flock -n 9 || fail "Another update is already running."
+fi
+
+# Free kilobytes under a folder, or nothing when it can't be told.
+free_kb() { { df -Pk "$1" 2>/dev/null || true; } | awk 'NR==2 {print $4}'; }
+
 # ---------------------------------------------------------------- build from GitHub
 if [ "$action" = github ]; then
   repo=$1 ref=$2 version=$3 commit=$4; shift 4
@@ -43,21 +53,36 @@ if [ "$action" = github ]; then
   tmpbase=/var/tmp best=0
   for d in /var/tmp /tmp /root; do
     [ -d "$d" ] && [ -w "$d" ] || continue
-    free=$(df -Pk "$d" 2>/dev/null | awk 'NR==2 {print $4}')
+    free=$(free_kb "$d")
     [ -n "$free" ] && [ "$free" -gt "$best" ] && { best=$free; tmpbase=$d; }
   done
   [ "$best" -gt 204800 ] || fail "There isn't enough free space to download Gluon (it needs about 200 MB)."
+  # The build writes into Docker's own folder, which needs room for the build and the new image.
+  root=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true)
+  dfree=""
+  [ -n "$root" ] && dfree=$(free_kb "$root")
+  if [ -n "$dfree" ] && [ "$dfree" -lt 2097152 ]; then
+    fail "There isn't enough free space for Docker to build Gluon (it needs about 2 GB in $root)."
+  fi
   WORK=$(mktemp -d "$tmpbase/gluon-update.XXXXXX")
+  mkdir "$WORK/src"
 
   stage download "Downloading $repo at $ref…"
-  curl -fsSL --retry 3 --max-time 600 "https://codeload.github.com/$repo/tar.gz/$ref" | tar -xz --strip-components=1 -C "$WORK"
-  [ -f "$WORK/docker/Dockerfile" ] || fail "That version of Gluon has no docker/Dockerfile to build."
+  # To a file first: a retry after a dropped connection starts the file over instead of feeding
+  # tar half of one download and then all of the next.
+  curl -fsSL --retry 3 --connect-timeout 20 --max-time 600 -o "$WORK/src.tar.gz" "https://codeload.github.com/$repo/tar.gz/$ref"
+  # GitHub names the archive's folder after the commit: proof this is the commit that was checked.
+  top=$(tar -tzf "$WORK/src.tar.gz" | sed -n 1p)
+  [[ $top == *-"$ref"/ ]] || fail "The download from GitHub wasn't the version that was checked. Try again later."
+  tar -xzf "$WORK/src.tar.gz" --strip-components=1 --no-same-owner -C "$WORK/src"
+  rm -f "$WORK/src.tar.gz"
+  [ -f "$WORK/src/docker/Dockerfile" ] || fail "That version of Gluon has no docker/Dockerfile to build."
 
   stage build "Building Gluon $version (this takes a few minutes)…"
   # Older commits' Dockerfiles lack the label that keeps Coolify's daily cleanup off the image.
-  docker build --progress=plain -t "gluon:$version" --label coolify.managed=true \
+  docker build --progress=plain -t "gluon:$version" --label coolify.managed=true --label gluon.updater=1 \
     --build-arg GLUON_VERSION="$version" --build-arg GLUON_COMMIT="$commit" --build-arg GLUON_BUILD="github" \
-    -f "$WORK/docker/Dockerfile" "$WORK" 2>&1
+    -f "$WORK/src/docker/Dockerfile" "$WORK/src" 2>&1
   NEW="gluon:$version"
 elif [ "$action" = pull ]; then
   NEW="" commit=""
@@ -66,6 +91,22 @@ else
 fi
 
 mode=$1; shift
+
+# Every update leaves a full image behind. After a good one, keep the new build and the one it
+# replaced (to go back to) and drop the updater's older builds. Errors are ignored: an image a
+# container still uses stays, and the update has already succeeded.
+prune_builds() { # <repository> <image id to keep>…
+  local repo=$1 ref id keep k
+  shift
+  while read -r ref id; do
+    case "$ref" in *"<none>"*) continue ;; esac
+    keep=0
+    for k in "$@"; do [ -n "$k" ] && [[ $k == "sha256:$id"* || $k == "$id"* ]] && keep=1; done
+    [ "$keep" = 1 ] || docker image rm "$ref" >/dev/null 2>&1 || true
+  done < <(docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' "$repo" 2>/dev/null || true)
+  docker image prune -f --filter label=gluon.updater=1 >/dev/null 2>&1 || true
+}
+
 wait_healthy() { # <container> <image id> [commit] → 0 when it runs that image (and commit) and is healthy (or has no healthcheck)
   local c=$1 want=$2 commit=${3:-}
   for _ in $(seq 1 90); do
@@ -121,6 +162,10 @@ if [ "$mode" = umbrel ]; then
   # commit (carried in its environment) proves the new version is the one running.
   sleep 10
   if wait_healthy "$container" "" "$commit"; then
+    keepnew=$(docker image inspect -f '{{.Id}}' "$NEW" 2>/dev/null || true)
+    keepold=$(docker image inspect -f '{{.Id}}' "${prev#FROM }" 2>/dev/null || true)
+    prune_builds gluon "$keepnew" "$keepold"
+    prune_builds "$app" "$keepnew" "$keepold"
     printf '::done ok %s\n' "Gluon ${NEW#gluon:} is running."
     exit 0
   fi
@@ -168,6 +213,7 @@ if [ "$mode" = compose ]; then
   docker compose "${args[@]}" up -d --no-build --no-deps "$service" 2>&1 || up=$?
   stage verify "Waiting for Gluon to come back…"
   if [ "$up" = 0 ] && wait_healthy "$container" "$newid"; then
+    if [ -n "$NEW" ]; then prune_builds gluon "$newid" "$previd"; fi
     printf '::done ok %s\n' "Gluon is running the new version."
     exit 0
   fi

@@ -13,6 +13,7 @@ import { umbrelAction } from "../platform/umbrel";
 import { AppError } from "../errors";
 import type { User } from "../auth/users";
 import { CHANNEL_NAME, type GithubTarget, type UpdateChannel, type UpdateLog, type UpdateMethod, type UpdateOption, type UpdateRelation, type UpdateRun, type UpdateStage, type UpdatesStatus } from "@/lib/updates-types";
+import { decideAuto } from "./policy";
 import { REPO, changesSince, detectInstall, latestOnGithub, relate, runningBuild, umbrelStoreVersion, type InstallDetail } from "./source";
 
 /**
@@ -402,16 +403,6 @@ async function startUpdateClaimed(opts: Parameters<typeof startUpdate>[0]): Prom
   return toRun(one<Row>("SELECT * FROM self_updates WHERE id = ?", id)!);
 }
 
-const ASAP_GAP = 45 * 60_000;
-
-/** Nightly "as it lands": not within 45 minutes of the last update, and not again for a build that already failed. */
-function asapBlocked(to: string | null): "wait" | "failed" | null {
-  const last = one<{ t: number | null }>("SELECT MAX(started_at) AS t FROM self_updates")?.t ?? 0;
-  if (now() - last < ASAP_GAP) return "wait";
-  if (to && one("SELECT id FROM self_updates WHERE to_version = ? AND outcome = 'failed' AND auto = 1", to)) return "failed";
-  return null;
-}
-
 async function background(opts: { install?: boolean } = {}) {
   const { status: s, certain } = await evaluate();
   const settings = s.settings;
@@ -424,26 +415,34 @@ async function background(opts: { install?: boolean } = {}) {
   const nightly = settings.channel === "nightly";
   const fromGithub = !!s.latest && available.some((o) => o.method === "github");
   const name = fromGithub && s.latest ? (nightly ? `${CHANNEL_NAME.nightly} ${s.latest.version}` : `Gluon ${s.latest.version}`) : "A newer Gluon";
-  let cause = s.latest?.title && s.latest.title !== name ? s.latest.title : "Install it from Settings → Updates, or turn on automatic updates.";
 
-  if (settings.auto && opt?.available) {
-    const to = opt.method === "github" ? (opt.target?.version ?? null) : opt.storeVersion;
-    if (nightly && settings.nightlyTiming === "asap") {
-      const blocked = asapBlocked(to);
-      if (blocked !== "failed") {
-        // Automatic updates will take it: nothing for a person to do.
-        resolve("gluon-update");
-        if (!blocked && certain && opts.install !== false) await startAuto(opt.method);
-        return;
-      }
-      cause = "The automatic update to it didn't finish. Gluon will try the next nightly on its own, or you can try this one from Settings → Updates.";
-    } else {
-      resolve("gluon-update");
-      const lastAuto = one<{ t: number | null }>("SELECT MAX(started_at) AS t FROM self_updates WHERE auto = 1")?.t ?? 0;
-      if (certain && opts.install !== false && new Date().getHours() === settings.hour && now() - lastAuto > 20 * 3600_000) await startAuto(opt.method);
-      return;
-    }
+  const to = opt?.available ? (opt.method === "github" ? (opt.target?.version ?? null) : opt.storeVersion) : null;
+  const decision = decideAuto({
+    settings,
+    option: opt?.available ? { method: opt.method, to } : null,
+    runningVersion: s.running.version,
+    certain,
+    now: now(),
+    hour: new Date().getHours(),
+    lastStartedAt: one<{ t: number | null }>("SELECT MAX(started_at) AS t FROM self_updates")?.t ?? 0,
+    lastAutoStartedAt: one<{ t: number | null }>("SELECT MAX(started_at) AS t FROM self_updates WHERE auto = 1")?.t ?? 0,
+    failedAutoAttempts: to ? (one<{ n: number }>("SELECT COUNT(*) AS n FROM self_updates WHERE to_version = ? AND outcome = 'failed' AND auto = 1", to)?.n ?? 0) : 0,
+  });
+  if (decision.kind !== "ask") {
+    resolve("gluon-update");
+    if (decision.kind === "install" && opts.install !== false && opt) await startAuto(opt.method);
+    return;
   }
+  const cause =
+    decision.why === "major"
+      ? `It's a new major version, so it may change how things work. Read what changed, then install it from Settings → Updates.`
+      : decision.why === "failed"
+        ? nightly && settings.nightlyTiming === "asap"
+          ? "The automatic update to it didn't finish. Gluon will try the next nightly on its own, or you can try this one from Settings → Updates."
+          : "The automatic update to it didn't finish. Try it from Settings → Updates to see why."
+        : s.latest?.title && s.latest.title !== name
+          ? s.latest.title
+          : "Install it from Settings → Updates, or turn on automatic updates.";
   raise({
     id: "gluon-update",
     kind: "gluon-update",
