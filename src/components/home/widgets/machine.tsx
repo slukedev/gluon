@@ -71,7 +71,7 @@ function SpaceWidget({ size }: WidgetProps) {
     }
     return <Rows n={size === "s" ? 0 : 2} />;
   }
-  if (!disks.length) return <WidgetState title="No disks to watch">Gluon hasn&apos;t measured any disks yet. They appear a minute after it starts.</WidgetState>;
+  if (!disks.length) return <WidgetState title="No disks yet">They show up a minute after Gluon starts.</WidgetState>;
   const nameOf = (mount: string) => names.get(mount) ?? mount;
   const filling = disks.filter((d) => d.trend === "filling" && d.daysToFull !== null && fillsIn(d.daysToFull));
   const learning = disks.every((d) => d.trend === "learning");

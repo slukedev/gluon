@@ -59,6 +59,16 @@ export function NetworkWidget({ size }: WidgetProps) {
   const up = mid - 4;
   const down = h - mid - 4;
   const x = (t: number) => 1 + ((t - t0) / span) * (w - 2 - 44);
+  // Every decade keeps its grid line, but in a short tile only the ones a line of text apart keep a label,
+  // counting down from the top so the scale's ceiling is always named.
+  const labelled = new Set<number>();
+  for (let i = decades.length - 1, lastY = -Infinity; i >= 0; i--) {
+    const y = mid - scale(decades[i]!, top) * up;
+    if (y - lastY >= 12) {
+      labelled.add(decades[i]!);
+      lastY = y;
+    }
+  }
 
   function pick(clientX: number, rect: DOMRect) {
     const px = clientX - rect.left;
@@ -126,9 +136,11 @@ export function NetworkWidget({ size }: WidgetProps) {
                 <g key={d} className={s.grid}>
                   <line x1={0} x2={w - 44} y1={Math.round(yUp) + 0.5} y2={Math.round(yUp) + 0.5} />
                   {!compact && <line x1={0} x2={w - 44} y1={Math.round(yDown) + 0.5} y2={Math.round(yDown) + 0.5} />}
-                  <text x={w - 40} y={yUp + 3.5}>
-                    {fmt.rate(d)}
-                  </text>
+                  {labelled.has(d) && (
+                    <text x={w - 40} y={yUp + 3.5}>
+                      {fmt.rate(d)}
+                    </text>
+                  )}
                 </g>
               );
             })}
