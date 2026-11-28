@@ -10,11 +10,17 @@ on:
 permissions:
   contents: write
 
+# Runs that move branches go one at a time, in order (shared with release.yml).
+concurrency:
+  group: move-refs
+  cancel-in-progress: false
+
 jobs:
   move:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Move the ref
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then ref=latest; else ref=edge; fi

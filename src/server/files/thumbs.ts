@@ -10,6 +10,7 @@ import { authorize } from "./paths";
 import { kindOf } from "./kinds";
 import { etagOf } from "./stream";
 import { inParent, openFileIn } from "./safe";
+import { imageWork, loadSharp } from "../sharp";
 
 const PROC_FD = process.platform === "linux" && fs.existsSync("/proc/self/fd");
 
@@ -24,34 +25,8 @@ const MAX_INPUT = 200 * 1024 * 1024;
 const MAX_CACHE = 400 * 1024 * 1024;
 const READABLE = /\.(jpe?g|png|webp|gif|avif|tiff?|bmp|heic|heif|svg)$/i;
 
-type Sharp = typeof import("sharp").default;
-type G = typeof globalThis & { __gluonSharp?: Promise<Sharp | null>; __gluonThumbActive?: number; __gluonThumbQueue?: (() => void)[]; __gluonThumbSwept?: number };
+type G = typeof globalThis & { __gluonThumbSwept?: number };
 const g = globalThis as G;
-
-function sharp(): Promise<Sharp | null> {
-  g.__gluonSharp ??= import("sharp")
-    .then((m) => {
-      const s = ((m as { default?: Sharp }).default ?? m) as Sharp;
-      s.cache(false);
-      s.concurrency(1);
-      return s;
-    })
-    .catch(() => null);
-  return g.__gluonSharp;
-}
-
-/** At most two decodes at a time: a folder of 4000 photos must not starve the server. */
-async function slot<T>(fn: () => Promise<T>): Promise<T> {
-  g.__gluonThumbQueue ??= [];
-  if ((g.__gluonThumbActive ?? 0) >= 2) await new Promise<void>((r) => g.__gluonThumbQueue!.push(r));
-  g.__gluonThumbActive = (g.__gluonThumbActive ?? 0) + 1;
-  try {
-    return await fn();
-  } finally {
-    g.__gluonThumbActive = Math.max(0, (g.__gluonThumbActive ?? 1) - 1);
-    g.__gluonThumbQueue.shift()?.();
-  }
-}
 
 /** Keep the cache under MAX_CACHE, oldest first. Runs at most every 10 minutes. */
 function sweep() {
@@ -96,11 +71,11 @@ export async function thumbnail(req: NextRequest, user: User, rawPath: string, w
     /* not cached yet */
   }
 
-  const lib = await sharp();
+  const lib = await loadSharp();
   if (!lib) throw new AppError("no_thumbnail", "Thumbnails aren't available on this server.", 415);
   let out: Buffer;
   try {
-    out = await slot(async () => {
+    out = await imageWork(async () => {
       // Read the file that was checked, through its opened folder: a path handed to sharp could be
       // swapped for a link to a picture this person may not see.
       const fh = await inParent(t.real, (d, n) => openFileIn(d, n, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK, undefined, t.stat));

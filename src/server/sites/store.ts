@@ -203,7 +203,7 @@ export function readFile(id: string, rel: string): SiteFileContent {
   const { abs, st } = resolveDraft(id, p);
   if (!st || !st.isFile()) throw notFound(`“${p}”`);
   if (st.size > SITE_LIMITS.textBytes) return { path: p, kind: "binary", size: st.size, etag: `${st.size}-${Math.floor(st.mtimeMs)}`, reason: "too-large" };
-  const buf = fs.readFileSync(abs);
+  const buf = fs.readFileSync(/*turbopackIgnore: true*/ abs);
   const etag = etagOf(buf);
   const text = kindOf(p) === "image" && !p.toLowerCase().endsWith(".svg") ? null : asText(buf);
   if (text === null) return { path: p, kind: "binary", size: buf.length, etag, reason: "binary" };
@@ -279,7 +279,7 @@ export function writeText(id: string, user: Pick<User, "username">, rel: string,
     if (etag === null && st) throw new AppError("exists", `There's already a file called “${p}”.`, 409, { field: "path" });
     if (etag !== null) {
       if (!st) throw new AppError("gone", `“${p}” was deleted or renamed somewhere else (another tab?). Save it under a new name, or reload the files.`, 409, { conflict: "gone" });
-      const cur = etagOf(fs.readFileSync(abs));
+      const cur = etagOf(fs.readFileSync(/*turbopackIgnore: true*/ abs));
       if (cur !== etag) throw new AppError("conflict", `“${p}” changed somewhere else (another tab?) since you opened it. Reload it to see that version, or save yours over it.`, 409, { conflict: "changed", etag: cur });
     }
     checkRoom(id, st ? 0 : 1, buf.length - (st?.size ?? 0));

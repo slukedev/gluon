@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/slukedev/gluon/actions/workflows/ci.yml"><img src="https://github.com/slukedev/gluon/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue" alt="License: GPL-3.0-or-later"></a>
-  <img src="https://img.shields.io/badge/node-%E2%89%A522-brightgreen" alt="Node 22 or newer">
+  <img src="https://img.shields.io/badge/node-%E2%89%A524-brightgreen" alt="Node 24 or newer">
   <img src="https://img.shields.io/badge/runs%20on-Linux%20%2B%20Docker-informational" alt="Runs on Linux with Docker">
 </p>
 
@@ -274,7 +274,7 @@ removed; whatever you set up through it (mounts, Caddy routes, DNS records) stay
 
 ## Development
 
-You'll need Node 22 or newer (the Docker image uses Node 24).
+You'll need Node 24 or newer (the Docker image uses Node 26).
 
 ```sh
 npm install
