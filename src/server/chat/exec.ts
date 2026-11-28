@@ -11,12 +11,13 @@ export async function execWithInput(
 ): Promise<{ exitCode: number | null; stdout: string; stderr: string; timedOut: boolean }> {
   const ctr = docker().getContainer(containerId);
   let exec: Awaited<ReturnType<typeof ctr.exec>>;
+  let stream: NodeJS.ReadWriteStream;
   try {
     exec = await ctr.exec({ Cmd: argv, AttachStdin: true, AttachStdout: true, AttachStderr: true, Tty: false, User: opts.user, Env: opts.env ? Object.entries(opts.env).map(([k, v]) => `${k}=${v}`) : undefined });
+    stream = (await exec.start({ hijack: true, stdin: true })) as NodeJS.ReadWriteStream;
   } catch (e) {
     throw dockerError(e, "Couldn't reach the chat server");
   }
-  const stream = (await exec.start({ hijack: true, stdin: true })) as NodeJS.ReadWriteStream;
   const out: Buffer[] = [];
   const err: Buffer[] = [];
   const sink = (into: Buffer[]) => ({ write: (c: Buffer) => (into.push(Buffer.from(c)), true) }) as unknown as NodeJS.WritableStream;
