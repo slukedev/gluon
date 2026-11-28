@@ -112,7 +112,15 @@ async function store(key: string, icon: Icon) {
   const name = `${key}.${EXT[icon.type]}`;
   const old = idx.get(key);
   if (old && old.name !== name) await fs.rm(path.join(DIR, old.name), { force: true });
-  await fs.writeFile(path.join(DIR, name), icon.body);
+  // A dot-first name, so a write cut short is never read back as an icon.
+  const tmp = path.join(DIR, `.${name}.${crypto.randomUUID()}`);
+  try {
+    await fs.writeFile(tmp, icon.body);
+    await fs.rename(tmp, path.join(DIR, name));
+  } catch (e) {
+    await fs.rm(tmp, { force: true });
+    throw e;
+  }
   const t = Date.now();
   idx.set(key, { name, size: icon.body.length, mtime: t, used: t });
   for (const victim of pickEvictions(idx, { maxFiles: MAX_FILES, maxBytes: MAX_DIR_BYTES, keep: key })) {
