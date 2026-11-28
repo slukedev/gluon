@@ -150,6 +150,9 @@ export function Files({ initialPlaces }: { initialPlaces: Places | null }) {
   );
   const bar = React.useMemo(() => ({ here, selection }), [here, selection]);
 
+  // Once the preview has opened it stays mounted, so it can animate out.
+  const [previewed, setPreviewed] = React.useState(false);
+
   // Places couldn't be read at all (the server's down or the request failed): say so, with a retry.
   if (!places.data && places.error) {
     return (
@@ -186,8 +189,6 @@ export function Files({ initialPlaces }: { initialPlaces: Places | null }) {
   }
 
   const lightbox = look && inLightbox(look.entry);
-  // Once the preview has opened it stays mounted, so it can animate out.
-  const [previewed, setPreviewed] = React.useState(false);
   if (look && !lightbox && !previewed) setPreviewed(true);
   return (
     <Ctx.Provider value={state}>
