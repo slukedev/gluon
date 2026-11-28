@@ -87,7 +87,6 @@
 .measure { position: absolute; top: 0; left: 0; visibility: hidden; pointer-events: none; white-space: pre; font-family: var(--font-mono); font-size: 13px; }
 
 .intro { display: grid; gap: 10px; max-width: 620px; padding: 28px 24px; }
-.introTitle { font-family: var(--font-display); font-stretch: 90%; font-size: var(--text-lg); font-weight: 600; }
 .introText { font-size: var(--text-md); line-height: 1.55; color: var(--ink-2); text-wrap: pretty; }
 .introText code { padding: 1px 5px; border-radius: var(--radius-small); background: var(--sunk); color: var(--ink); }
 .examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; padding: 0; list-style: none; }

@@ -217,7 +217,6 @@ export const CommandsMode = React.forwardRef<CommandsHandle, Props>(function Com
         </span>
         {list.length === 0 ? (
           <div className={s.intro}>
-            <p className={s.introTitle}>{p.target === "host" ? "Run a command on this server" : `Run a command in ${p.label}`}</p>
             <p className={s.introText}>
               Pipes, variables and <code>cd</code> work. Full-screen programs like <code>top</code> or <code>vim</code> open in the terminal.
             </p>
