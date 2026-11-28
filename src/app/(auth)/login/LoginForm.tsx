@@ -21,11 +21,12 @@ interface Props {
   zone: "home" | "away";
   serverName: string;
   adminsNeedCode: boolean;
+  awaitingCode?: boolean;
 }
 
-export function LoginForm({ next, zone, serverName, adminsNeedCode }: Props) {
+export function LoginForm({ next, zone, serverName, adminsNeedCode, awaitingCode }: Props) {
   const router = useRouter();
-  const [step, setStep] = React.useState<Step>("password");
+  const [step, setStep] = React.useState<Step>(awaitingCode ? "code" : "password");
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [code, setCode] = React.useState("");
@@ -122,6 +123,8 @@ export function LoginForm({ next, zone, serverName, adminsNeedCode }: Props) {
   }
 
   function startOver() {
+    // Drops the half-finished sign-in, so a reload doesn't bring the code back.
+    void api.post("/api/auth/logout").catch(() => {});
     setStep("password");
     setPassword("");
     setCode("");

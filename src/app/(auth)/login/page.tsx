@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { currentAuth } from "@/server/auth/session";
+import { currentAuth, pendingAuth } from "@/server/auth/session";
 import { userCount } from "@/server/auth/users";
 import { clientInfo } from "@/server/net-zone";
 import { getSetting } from "@/server/settings";
@@ -16,5 +16,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const dest = safeNext(next);
   if (await currentAuth()) redirect(dest);
   const { zone } = clientInfo(await headers());
-  return <LoginForm next={dest} zone={zone} serverName={getSetting("serverName")} adminsNeedCode={mfaRequired("admin", "away")} />;
+  // A reload while the code was being asked for picks up at the code, not the password.
+  const awaitingCode = (await pendingAuth())?.session.pending === "code";
+  return <LoginForm next={dest} zone={zone} serverName={getSetting("serverName")} adminsNeedCode={mfaRequired("admin", "away")} awaitingCode={awaitingCode} />;
 }

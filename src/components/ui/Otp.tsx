@@ -57,7 +57,6 @@ export function Otp({ value, onChange, onComplete, id, invalid, disabled, autoFo
         inputMode="numeric"
         autoComplete="one-time-code"
         pattern="[0-9]*"
-        maxLength={LENGTH}
         autoCorrect="off"
         autoCapitalize="none"
         spellCheck={false}
@@ -68,6 +67,7 @@ export function Otp({ value, onChange, onComplete, id, invalid, disabled, autoFo
         disabled={disabled}
         className={s.input}
         value={value}
+        // No maxLength: it would cut a pasted "123 456" to "123 45" before the spaces are dropped.
         onChange={(e) => {
           const next = e.target.value.replace(/\D/g, "").slice(0, LENGTH);
           if (next === value) return;

@@ -37,7 +37,10 @@ export function InviteForm({ token, displayName, role, serverName, mustEnrol, re
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<{ message: string; field?: string } | null>(null);
   const [codes, setCodes] = React.useState<string[] | null>(null);
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setF((p) => ({ ...p, [k]: e.target.value }));
+    if (error?.field === k) setError(null);
+  };
 
   const finish = React.useCallback(() => {
     router.replace("/welcome");
