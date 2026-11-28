@@ -1,9 +1,10 @@
+import { param } from "@/app/api/docker/params";
 import { z } from "zod";
 import { route } from "@/server/api";
 import { runUninstall, uninstallPlan } from "@/server/apps/uninstall";
 
 /** Exactly what uninstalling would remove and keep, in both modes. Changes nothing. */
-export const GET = route({ auth: "admin" }, ({ params }) => uninstallPlan(decodeURIComponent(String(params.id))));
+export const GET = route({ auth: "admin" }, ({ params }) => uninstallPlan(param(params.id)));
 
 const body = z.object({
   mode: z.enum(["keep", "everything"]),
@@ -13,5 +14,5 @@ const body = z.object({
 });
 
 export const POST = route({ auth: "admin", recent: true, body }, ({ params, body, user, ip, zone }) =>
-  runUninstall(decodeURIComponent(String(params.id)), body.mode, body.planId, user, { ip, zone }, body.remove),
+  runUninstall(param(params.id), body.mode, body.planId, user, { ip, zone }, body.remove),
 );

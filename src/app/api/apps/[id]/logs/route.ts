@@ -1,3 +1,4 @@
+import { param } from "@/app/api/docker/params";
 import { z } from "zod";
 import { route, sse } from "@/server/api";
 import { getApp } from "@/server/docker/apps";
@@ -10,7 +11,7 @@ const query = z.object({
 });
 
 export const GET = route({ auth: "admin", query }, async ({ req, params, query }) => {
-  const app = await getApp(decodeURIComponent(String(params.id)));
+  const app = await getApp(param(params.id));
   if (!app) throw notFound("That app");
   const targets = query.container ? app.containers.filter((c) => c.name === query.container) : app.containers;
   if (!targets.length) throw notFound("That container");

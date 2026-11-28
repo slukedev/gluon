@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { param } from "@/app/api/docker/params";
 
 /**
  * Who can reach which API, read from the route files themselves. A new route that household members
@@ -142,5 +143,13 @@ describe("API access", () => {
       expect(r, p).toBeDefined();
       expect(r!.src, p).toMatch(/recent: true|requireTerminalAuth\(session\)/);
     }
+  });
+
+  it("decodes route params only through param(), which never throws on a stray %", () => {
+    for (const r of routes) expect(r.src, r.path).not.toMatch(/decodeURIComponent\(\s*String\(\s*params/);
+    expect(param("100%")).toBe("100%");
+    expect(param("a%zz%2")).toBe("a%zz%2");
+    expect(param("my%20app")).toBe("my app");
+    expect(param(["first", "second"])).toBe("first");
   });
 });

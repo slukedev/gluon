@@ -1,3 +1,4 @@
+import { param } from "@/app/api/docker/params";
 import { route } from "@/server/api";
 import { notFound } from "@/server/errors";
 import { getInventoryState, findDisk } from "@/server/storage/inventory";
@@ -5,7 +6,7 @@ import { smartDetail, smartFor } from "@/server/storage/smart";
 
 /** One disk by id, name or serial, with its full SMART table and history. */
 export const GET = route({ auth: "admin" }, async ({ params }) => {
-  const key = decodeURIComponent(String(params.disk ?? ""));
+  const key = param(params.disk);
   const s = await getInventoryState();
   const disk = findDisk(s, key);
   if (!disk) throw notFound("That disk");

@@ -1,3 +1,4 @@
+import { param } from "@/app/api/docker/params";
 import { z } from "zod";
 import { route } from "@/server/api";
 import { AppError } from "@/server/errors";
@@ -34,7 +35,7 @@ function accessChanges(id: string, body: { household?: boolean; access?: string[
 }
 
 export const PATCH = route({ auth: "admin", body }, ({ params, body, user, session, ip, zone }) => {
-  const id = decodeURIComponent(String(params.id));
+  const id = param(params.id);
   // Who can open an app is an access decision (same as People → Apps): confirm it's you first.
   if (accessChanges(id, body) && !hasRecentAuth(session)) throw new AppError("reauth", "Confirm it's you to continue.", 403);
   const blank = (v: string | undefined) => (v === undefined ? undefined : v.trim() || null);

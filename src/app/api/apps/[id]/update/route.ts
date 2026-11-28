@@ -1,3 +1,4 @@
+import { param } from "@/app/api/docker/params";
 import { route, ndjson } from "@/server/api";
 import { getApp, invalidateApps } from "@/server/docker/apps";
 import { streamCompose } from "@/server/docker/actions";
@@ -10,7 +11,7 @@ import { lockApps } from "@/server/apps/lock";
 const STATE_TEXT: Partial<Record<UmbrelAppState, string>> = { updating: "Updating", starting: "Starting", restarting: "Restarting", ready: "Running", running: "Running", stopped: "Stopped" };
 
 export const POST = route({ auth: "admin", recent: true }, async ({ req, params, user, ip, zone }) => {
-  const app = await getApp(decodeURIComponent(String(params.id)));
+  const app = await getApp(param(params.id));
   if (!app) throw notFound("That app");
   if (app.self) throw new AppError("self", "Gluon can't update itself from here. Update it in Settings.");
   const lock = lockApps([app.id], `${app.name} is updating`);

@@ -1,3 +1,4 @@
+import { param } from "@/app/api/docker/params";
 import { z } from "zod";
 import { route } from "@/server/api";
 import { hasRecentAuth } from "@/server/auth/session";
@@ -28,6 +29,6 @@ const SENSITIVE = new Set(["registered.password", "registered.delete", "register
 
 export const POST = route({ auth: "admin", body, burst: { limit: 60, windowMs: 60_000 } }, async ({ params, body, user, session: s, ip, zone }) => {
   if ((SENSITIVE.has(body.op) || (body.op === "setting" && body.key === "password")) && !hasRecentAuth(s)) throw new AppError("reauth", "Confirm it's you to continue.", 403);
-  const message = await voiceAct(decodeURIComponent(String(params.id)), body, user, { ip, zone });
+  const message = await voiceAct(param(params.id), body, user, { ip, zone });
   return { ok: true, message };
 });

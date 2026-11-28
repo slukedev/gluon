@@ -1,3 +1,4 @@
+import { param } from "@/app/api/docker/params";
 import { z } from "zod";
 import { route } from "@/server/api";
 import { appAction, containerAction } from "@/server/docker/actions";
@@ -14,7 +15,7 @@ const body = z.union([
 ]);
 
 export const POST = route({ auth: "admin", body }, async ({ params, body, user, session, ip, zone }) => {
-  const id = decodeURIComponent(String(params.id));
+  const id = param(params.id);
   if ("container" in body) {
     if (body.action === "kill" && !hasRecentAuth(session)) throw new AppError("reauth", "Confirm it's you to continue.", 403);
     const app = await getApp(id);

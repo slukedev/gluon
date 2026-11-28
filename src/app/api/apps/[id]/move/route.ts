@@ -1,3 +1,4 @@
+import { param } from "@/app/api/docker/params";
 import { z } from "zod";
 import { route, ndjson } from "@/server/api";
 import { AppError } from "@/server/errors";
@@ -6,7 +7,7 @@ import type { MoveEvent } from "@/lib/app-move-types";
 
 /** `?only=job` skips the plan (measuring folders takes a while) when only following a move. */
 export const GET = route({ auth: "admin", query: z.object({ only: z.enum(["job"]).optional() }) }, async ({ params, query }) => {
-  const id = decodeURIComponent(String(params.id));
+  const id = param(params.id);
   const job = moveJob(id);
   if (moveRunning(id) || query.only === "job") return { plan: null, job, error: null };
   try {
@@ -21,7 +22,7 @@ const body = z.object({ planId: z.string().regex(/^[a-f0-9]{20}$/, "Review the m
 
 /** The move carries on if the page closes. */
 export const POST = route({ auth: "admin", recent: true, body }, async ({ req, params, body, user, ip, zone }) => {
-  const id = decodeURIComponent(String(params.id));
+  const id = param(params.id);
   await startMove(id, body.planId, user, { ip, zone });
   return ndjson(
     (emit, signal) =>

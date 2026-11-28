@@ -1,3 +1,4 @@
+import { param } from "@/app/api/docker/params";
 import { z } from "zod";
 import { route } from "@/server/api";
 import { dismiss, getFinding, snooze, undismiss } from "@/server/findings";
@@ -12,7 +13,7 @@ const body = z.discriminatedUnion("op", [
 ]);
 
 export const POST = route({ auth: "admin", body }, ({ params, body, user, ip, zone }) => {
-  const id = decodeURIComponent(String(params.id));
+  const id = param(params.id);
   const f = getFinding(id);
   if (!f) throw notFound("That item");
   if (body.op === "snooze") {
