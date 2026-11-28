@@ -18,8 +18,8 @@ describe("parseMountinfo", () => {
 });
 
 describe("isRemoteFs", () => {
-  it("treats network shares and FUSE as able to hang, local NTFS (fuseblk) as not", () => {
-    for (const t of ["nfs", "nfs4", "cifs", "fuse.sshfs", "fuse.mergerfs"]) expect(isRemoteFs(t)).toBe(true);
-    for (const t of ["ext4", "fuseblk", "btrfs", "exfat"]) expect(isRemoteFs(t)).toBe(false);
+  it("treats network shares and every FUSE mount, local NTFS (fuseblk) included, as able to hang", () => {
+    for (const t of ["nfs", "nfs4", "cifs", "fuse.sshfs", "fuse.mergerfs", "fuseblk"]) expect(isRemoteFs(t)).toBe(true);
+    for (const t of ["ext4", "ntfs3", "btrfs", "exfat"]) expect(isRemoteFs(t)).toBe(false);
   });
 });
