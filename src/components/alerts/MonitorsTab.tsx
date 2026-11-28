@@ -84,13 +84,11 @@ export function MonitorsTab({ initialOpen }: { initialOpen: string | null }) {
   const { data, error, isLoading, mutate: mutateList } = useApi<MonitorView[]>(listUrl, { refresh: 30_000, keepPreviousData: true });
   const { data: apps } = useApi<AppLite[]>("/api/apps", { revalidateOnFocus: false });
   const { mutate: globalMutate } = useSWRConfig();
-  const mutate = React.useCallback(() => {
-    void mutateList();
-    void globalMutate((k) => typeof k === "string" && k.startsWith(MONITORS_URL));
-  }, [mutateList, globalMutate]);
+  const mutate = React.useCallback(() => Promise.all([mutateList(), globalMutate((k) => typeof k === "string" && k.startsWith(MONITORS_URL))]), [mutateList, globalMutate]);
   const [q, setQ] = React.useState("");
   const [show, setShow] = React.useState<Show>("all");
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [toggling, setToggling] = React.useState<string | null>(null);
   const [detail, setDetail] = React.useState<string | null>(initialOpen);
   const [editing, setEditing] = React.useState<MonitorView | null>(null);
   const [formOpen, setFormOpen] = React.useState(false);
@@ -118,15 +116,16 @@ export function MonitorsTab({ initialOpen }: { initialOpen: string | null }) {
     }
   }
   async function setEnabled(m: MonitorView, enabled: boolean) {
-    setBusy(m.id);
+    if (toggling) return;
+    setToggling(m.id);
     try {
       await api.patch(`/api/alerts/monitors/${encodeURIComponent(m.id)}`, { enabled });
       toast.success(enabled ? `Watching ${m.name} again` : `Paused ${m.name}`, { description: enabled ? undefined : "No checks and no alerts until you resume it." });
-      void mutate();
+      await mutate();
     } catch (e) {
       if (!(e instanceof ApiError && e.code === "reauth_cancelled")) toast.error(errorMessage(e));
     } finally {
-      setBusy(null);
+      setToggling(null);
     }
   }
   const remove = (m: MonitorView) =>
@@ -153,6 +152,7 @@ export function MonitorsTab({ initialOpen }: { initialOpen: string | null }) {
   }
 
   const all = data ?? [];
+  const empty = !!data && data.length === 0;
   const term = q.trim().toLowerCase();
   const deferredTerm = React.useDeferredValue(term);
   const rows = all.filter((m) => (show === "problems" ? isProblem(m) : true)).filter((m) => !deferredTerm || m.name.toLowerCase().includes(deferredTerm) || m.target.toLowerCase().includes(deferredTerm));
@@ -164,28 +164,32 @@ export function MonitorsTab({ initialOpen }: { initialOpen: string | null }) {
   return (
     <>
       <div className={s.toolbar}>
-        <label className={s.filter}>
-          <Search aria-hidden />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by name or address" aria-label="Filter monitors" spellCheck={false} />
-        </label>
-        <Segmented
-          aria-label="Show"
-          value={show}
-          onChange={setShow}
-          options={[
-            { value: "all", label: "All" },
-            { value: "problems", label: problems ? `Problems ${problems}` : "Problems" },
-          ]}
-        />
-        <Segmented
-          aria-label="History to show"
-          value={range}
-          onChange={setRange}
-          options={[
-            { value: "24h", label: "24 hours" },
-            { value: "7d", label: "7 days" },
-          ]}
-        />
+        {empty ? null : (
+          <>
+            <label className={s.filter}>
+              <Search aria-hidden />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by name or address" aria-label="Filter monitors" spellCheck={false} />
+            </label>
+            <Segmented
+              aria-label="Show"
+              value={show}
+              onChange={setShow}
+              options={[
+                { value: "all", label: "All" },
+                { value: "problems", label: problems ? `Problems ${problems}` : "Problems" },
+              ]}
+            />
+            <Segmented
+              aria-label="History to show"
+              value={range}
+              onChange={setRange}
+              options={[
+                { value: "24h", label: "24 hours" },
+                { value: "7d", label: "7 days" },
+              ]}
+            />
+          </>
+        )}
         <div className={s.toolbarEnd}>
           <Menu
             trigger={
@@ -219,13 +223,8 @@ export function MonitorsTab({ initialOpen }: { initialOpen: string | null }) {
         </div>
       ) : rows.length === 0 ? (
         <div className={s.table}>
-          <Empty
-            title={term ? `Nothing matches “${q}”` : show === "problems" ? "Every monitor is answering" : "No monitors yet"}
-            action={!all.length ? <Button onClick={() => edit(null)}>Add a monitor</Button> : undefined}
-          >
-            {all.length === 0
-              ? "Apps and public addresses get one on their own. Add one for a router, a NAS or a website."
-              : "Try another filter."}
+          <Empty title={empty ? "No monitors yet" : term ? `Nothing matches “${q}”` : show === "problems" ? "Every monitor is answering" : "No monitors yet"}>
+            {empty ? "Apps and public addresses get one on their own. Add one for a router, a NAS or a website." : term ? "Try another filter." : null}
           </Empty>
         </div>
       ) : (
@@ -292,11 +291,11 @@ export function MonitorsTab({ initialOpen }: { initialOpen: string | null }) {
         footer={(d) => (
           <>
             {d.enabled ? (
-              <Button variant="ghost" icon={<Pause />} onClick={() => void setEnabled(d, false)}>
+              <Button variant="ghost" icon={<Pause />} loading={toggling === d.id} onClick={() => void setEnabled(d, false)}>
                 Pause
               </Button>
             ) : (
-              <Button variant="ghost" icon={<Play />} onClick={() => void setEnabled(d, true)}>
+              <Button variant="ghost" icon={<Play />} loading={toggling === d.id} onClick={() => void setEnabled(d, true)}>
                 Resume
               </Button>
             )}

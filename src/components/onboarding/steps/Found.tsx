@@ -63,6 +63,12 @@ interface Query<T> {
   mutate: () => unknown;
 }
 
+function errorDetail(e: ApiError): string | null {
+  const raw = typeof e.details?.detail === "string" ? e.details.detail : e.message || null;
+  if (e.code === "docker_down" || (raw && /docker\.sock/.test(raw))) return "Docker isn't answering. Check that it's running on the server.";
+  return raw;
+}
+
 function Reading<T>({ label, q, what, lines, children }: { label: string; q: Query<T>; what: string; lines: number; children: (d: T) => React.ReactNode }) {
   const loading = !q.data && !q.error;
   return (
@@ -76,7 +82,7 @@ function Reading<T>({ label, q, what, lines, children }: { label: string; q: Que
         <PartError
           // Plain words lead on a first look; the system's own message sits under them for whoever needs it.
           message={`Couldn't read ${what}.`}
-          detail={typeof q.error.details?.detail === "string" ? q.error.details.detail : q.error.message || null}
+          detail={errorDetail(q.error)}
           onRetry={() => void q.mutate()}
         />
       ) : (

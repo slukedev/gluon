@@ -85,11 +85,12 @@
 /* Phones and narrow panes: stacked rows. */
 @container people (max-width: 561px) {
   .headRow { display: none; }
-  .row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; grid-template-areas: "who who go" "role mfa mfa" "seen state state"; gap: 6px 12px; padding: 12px 12px 14px 16px; }
+  .row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; grid-template-areas: "who who go" "role mfa mfa" "seen seen seen" "state state state"; gap: 6px 12px; padding: 12px 12px 14px 16px; }
   .who { padding: 0; }
   .row > .role, .row > .mfa, .row > .seen, .row > .state { align-self: auto; }
   .role, .mfa, .seen, .state { padding-left: 46px; font-size: var(--text-sm); }
-  .mfa, .state { padding-left: 0; }
+  .mfa { padding-left: 0; }
+  .row > .seen { white-space: normal; }
   .cellLabel { display: inline; color: var(--muted); margin-right: 6px; }
 }
 
