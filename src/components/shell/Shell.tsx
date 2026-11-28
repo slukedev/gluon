@@ -276,7 +276,7 @@ export function Shell({ children, memberFiles, initial }: ShellProps) {
       </div>
       {!inDrawer && (
         <div className={s.searchRow}>
-          <Tooltip content="Search" shortcut="⌘K" side="right" disabled={!railed}>
+          <Tooltip content="Search" shortcut={isMac ? "⌘K" : "Ctrl K"} side="right" disabled={!railed}>
             <button type="button" className={s.search} onClick={() => setPaletteOpen(true)} aria-label={railed ? "Search" : undefined} aria-keyshortcuts="Meta+K Control+K">
               <Search />
               <span className={s.searchText}>Search</span>
@@ -393,7 +393,15 @@ export function Shell({ children, memberFiles, initial }: ShellProps) {
             <Drawer.Portal>
               <Drawer.Backdrop className={s.drawerBackdrop} data-motion-gentle="" />
               <Drawer.Viewport className={s.drawerViewport}>
-                <Drawer.Popup className={s.drawerPopup} aria-label="Navigation" data-motion-gentle="">
+                <Drawer.Popup
+                  className={s.drawerPopup}
+                  aria-label="Navigation"
+                  data-motion-gentle=""
+                  // A link to the page already open changes no path, so the path effect alone would leave the drawer up.
+                  onClick={(e) => {
+                    if ((e.target as Element).closest("a[href]")) setDrawerOpen(false);
+                  }}
+                >
                   {sidebarBody(true)}
                 </Drawer.Popup>
               </Drawer.Viewport>
