@@ -55,7 +55,7 @@ export interface CopiedVersion {
 export function copyToVersion(id: string, from: string, version: string): CopiedVersion {
   const o = owner();
   for (const d of [PUBLISHED_DIR, siteVersionsDir(id)]) {
-    if (!fs.existsSync(d)) {
+    if (!fs.existsSync(/*turbopackIgnore: true*/ d)) {
       fs.mkdirSync(d, { mode: 0o755 });
       fs.chmodSync(d, 0o755);
       own(d, o);

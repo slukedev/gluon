@@ -366,7 +366,7 @@ async function finalize(user: User, r: Row, where: Where): Promise<UploadSession
     }
     try {
       // Owner, mode and time are set on the open file, never through a path someone could swap.
-      const fh = await fs.promises.open(staged, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+      const fh = await fs.promises.open(/*turbopackIgnore: true*/ staged, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
       try {
         await fh.chmod(0o644);
         await fh.chown(owner.uid, owner.gid).catch(() => {});
