@@ -1,5 +1,6 @@
 import "server-only";
 import { spawn, type ChildProcess } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 
 /**
  * `host()` runs a program inside the host's namespaces via nsenter, so it sees the real filesystem,
@@ -177,12 +178,16 @@ export function localSpawn(cmd: string, args: string[] = []): ChildProcess {
   return groupKillable(spawn(cmd, args, { env: { ...HOST_ENV }, stdio: ["ignore", "pipe", "pipe"], detached: true }));
 }
 
+const MAX_LINE = 64 * 1024;
+
 /** Split a stream into lines, calling back per line. Returns a flush function. */
 export function lineReader(onLine: (line: string) => void) {
+  // A chunk can end inside a multi-byte character; the decoder holds those bytes for the next one.
+  const decoder = new StringDecoder("utf8");
   let buf = "";
   return {
     push(chunk: Buffer | string) {
-      buf += chunk.toString();
+      buf += typeof chunk === "string" ? chunk : decoder.write(chunk);
       let start = 0;
       let i: number;
       while ((i = buf.indexOf("\n", start)) >= 0) {
@@ -190,8 +195,14 @@ export function lineReader(onLine: (line: string) => void) {
         start = i + 1;
       }
       if (start) buf = buf.slice(start);
+      // Progress bars redraw with \r and may never end a line; don't hold one forever.
+      if (buf.length > MAX_LINE) {
+        onLine(buf);
+        buf = "";
+      }
     },
     flush() {
+      buf += decoder.end();
       if (buf) onLine(buf);
       buf = "";
     },

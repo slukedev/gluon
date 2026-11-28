@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
-import { CommandError, local, localSpawn } from "./exec";
+import { CommandError, lineReader, local, localSpawn } from "./exec";
 
 // A killed orphan can linger as a zombie when PID 1 doesn't reap, so read its state.
 const alive = (pid: number) => {
@@ -62,5 +62,37 @@ describe("localSpawn()", () => {
     await closed;
     await new Promise((r) => setTimeout(r, 100));
     expect(alive(pid)).toBe(false);
+  });
+});
+
+describe("lineReader()", () => {
+  const collect = () => {
+    const lines: string[] = [];
+    return { lines, reader: lineReader((l) => lines.push(l)) };
+  };
+
+  it("keeps a character whole when a chunk ends inside it", () => {
+    const { lines, reader } = collect();
+    const bytes = Buffer.from("✔ Container jellyfin  Started\r\nnext ünïcode\n");
+    for (let i = 0; i < bytes.length; i += 3) reader.push(bytes.subarray(i, i + 3));
+    reader.flush();
+    expect(lines).toEqual(["✔ Container jellyfin  Started", "next ünïcode"]);
+  });
+
+  it("flushes a last line with no newline, its final character split across chunks", () => {
+    const { lines, reader } = collect();
+    const bytes = Buffer.from("tail é");
+    reader.push(bytes.subarray(0, bytes.length - 1));
+    reader.push(bytes.subarray(bytes.length - 1));
+    reader.flush();
+    expect(lines).toEqual(["tail é"]);
+  });
+
+  it("hands over a line that never ends instead of holding it without bound", () => {
+    const { lines, reader } = collect();
+    const bar = "\r[=====>    ] 42%";
+    for (let i = 0; i < 5000; i++) reader.push(bar);
+    expect(lines.length).toBeGreaterThan(0);
+    expect(Math.max(...lines.map((l) => l.length))).toBeLessThanOrEqual(64 * 1024 + bar.length);
   });
 });
