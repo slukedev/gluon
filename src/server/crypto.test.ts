@@ -41,3 +41,20 @@ describe("the secret key's home", () => {
     expect(() => C.encrypt("x")).toThrow(/wrong length/);
   });
 });
+
+describe("sealed secrets", () => {
+  it("opens what it sealed and nothing that was changed", () => {
+    const sealed = C.encrypt("cloudflare token");
+    expect(C.decrypt(sealed)).toBe("cloudflare token");
+    const [v, iv, tag, body] = sealed.split(".") as [string, string, string, string];
+    const flipped = Buffer.from(body, "base64url");
+    flipped[0] = flipped[0]! ^ 1;
+    expect(() => C.decrypt([v, iv, tag, flipped.toString("base64url")].join("."))).toThrow();
+  });
+
+  it("refuses a shortened tag, which would be far easier to forge", () => {
+    const [v, iv, tag, body] = C.encrypt("x").split(".") as [string, string, string, string];
+    const short = Buffer.from(tag, "base64url").subarray(0, 4).toString("base64url");
+    expect(() => C.decrypt([v, iv, short, body].join("."))).toThrow();
+  });
+});

@@ -79,7 +79,8 @@ export function encrypt(plain: string): string {
 export function decrypt(sealed: string): string {
   const [v, iv, tag, body] = sealed.split(".");
   if (v !== "v1" || !iv || !tag || !body) throw new Error("Unrecognised secret format");
-  const d = crypto.createDecipheriv("aes-256-gcm", key(), Buffer.from(iv, "base64url"));
+  // A full-length tag only: GCM accepts tags as short as 4 bytes, which are far easier to forge.
+  const d = crypto.createDecipheriv("aes-256-gcm", key(), Buffer.from(iv, "base64url"), { authTagLength: 16 });
   d.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([d.update(Buffer.from(body, "base64url")), d.final()]).toString("utf8");
 }
