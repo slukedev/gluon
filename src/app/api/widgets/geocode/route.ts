@@ -4,7 +4,7 @@ import { cached } from "@/server/integrations/cache";
 import { geocode } from "@/server/widgets/sources";
 
 export const GET = route(
-  { auth: "user", query: z.object({ q: z.string().trim().min(2, "Type at least two letters.").max(100) }) },
+  { auth: "user", query: z.object({ q: z.string().trim().min(2, "Type at least two letters.").max(100) }), burst: { limit: 30, windowMs: 60_000 } },
   async ({ query }) => {
     const term = query.q.toLowerCase();
     return (await cached(`geo:${term}`, 24 * 60 * 60_000, () => geocode(query.q))).value;

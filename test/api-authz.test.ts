@@ -152,4 +152,12 @@ describe("API access", () => {
     expect(param("my%20app")).toBe("my app");
     expect(param(["first", "second"])).toBe("first");
   });
+
+  it("rate limits what lets a member make the server reach out to the internet", () => {
+    for (const p of ["favicon", "icon", "widgets/geocode", "integrations/[id]/control", "integrations/[id]/entities", "search"]) {
+      const r = routes.find((x) => x.path === p);
+      expect(r, p).toBeDefined();
+      expect(r!.src, p).toMatch(/burst: \{ limit: \d+, windowMs: [\d_]+ \}/);
+    }
+  });
 });
