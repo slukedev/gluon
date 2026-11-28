@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useApi } from "@/lib/client/api";
-import { useLive } from "@/lib/client/live";
+import { useLiveHost } from "@/lib/client/live";
 import { useFormat } from "@/components/PrefsProvider";
 import type { HostSample } from "@/server/metrics/sampler";
 
@@ -26,7 +26,7 @@ export interface MachineReading {
 export interface MachineReadings {
   readings: Partial<Record<ReadingKey, MachineReading>>;
   last: HostSample | undefined;
-  status: ReturnType<typeof useLive>["status"];
+  status: ReturnType<typeof useLiveHost>["status"];
   span: string;
   windowMs: number;
 }
@@ -52,7 +52,7 @@ export function splitUnit(s: string): [string, string] {
 }
 
 export function useMachineReadings(): MachineReadings {
-  const { host, status } = useLive();
+  const { host, status } = useLiveHost();
   const fmt = useFormat();
   const { data: hist } = useApi<History>(`/api/metrics/history?keys=${HISTORY_KEYS}&range=24h`, { refresh: 10 * 60_000 });
   const last = host.at(-1);

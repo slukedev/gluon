@@ -6,7 +6,7 @@ import { ArrowUpRight, Play } from "iconoir-react";
 import type { SettingsProps, WidgetProps } from "../types";
 import { useSmartUrl, type HomeApp } from "./core";
 import { api, ApiError, useApi } from "@/lib/client/api";
-import { useLive } from "@/lib/client/live";
+import { useLiveContainers } from "@/lib/client/live";
 import { usePrefs, useFormat } from "@/components/PrefsProvider";
 import { AppIcon } from "@/components/apps/AppIcon";
 import { Button } from "@/components/ui/Button";
@@ -52,7 +52,7 @@ export function uptimeOf(app: ApiApp): string | null {
 }
 
 function useAppSeries(names: string[]) {
-  const { containers, status } = useLive();
+  const { containers, status } = useLiveContainers();
   const key = names.join("\u0000");
   const series = React.useMemo(() => {
     const set = new Set(key.split("\u0000"));

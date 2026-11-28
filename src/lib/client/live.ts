@@ -115,8 +115,22 @@ export function useLiveValue<T>(pick: (s: LiveState) => T): T {
   );
 }
 
+const pickHost = (s: LiveState) => s.host;
+const pickContainers = (s: LiveState) => s.containers;
+const pickStatus = (s: LiveState) => s.status;
+
+/** Host samples only: a container sample arriving doesn't re-render what draws the machine. */
+export function useLiveHost(): Pick<LiveState, "host" | "status"> {
+  return { host: useLiveValue(pickHost), status: useLiveValue(pickStatus) };
+}
+
+/** Container samples only: a host sample arriving (every second) doesn't re-render what draws apps. */
+export function useLiveContainers(): Pick<LiveState, "containers" | "status"> {
+  return { containers: useLiveValue(pickContainers), status: useLiveValue(pickStatus) };
+}
+
 export function useContainerStats(): Map<string, ContainerSample> {
-  const { containers, status } = useLive();
+  const { containers, status } = useLiveContainers();
   // A frozen sample from before the stream dropped isn't a reading.
   const last = status === "live" ? containers.at(-1) : undefined;
   return React.useMemo(() => new Map((last?.list ?? []).map((c) => [c.name, c])), [last]);

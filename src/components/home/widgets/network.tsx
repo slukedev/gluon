@@ -2,7 +2,7 @@
 import * as React from "react";
 import { ArrowDown, ArrowUp } from "iconoir-react";
 import type { WidgetProps } from "../types";
-import { useLive } from "@/lib/client/live";
+import { useLiveHost } from "@/lib/client/live";
 import { useApi } from "@/lib/client/api";
 import type { RouterGlance } from "@/lib/router-types";
 import { useFormat } from "@/components/PrefsProvider";
@@ -33,7 +33,7 @@ const FLOOR = 1000; // 1 kB/s: below this a home network is idle.
 const scale = (v: number, top: number) => Math.log10(1 + Math.max(0, v) / FLOOR) / Math.log10(1 + top / FLOOR);
 
 export function NetworkWidget({ size }: WidgetProps) {
-  const { host, status } = useLive();
+  const { host, status } = useLiveHost();
   const fmt = useFormat();
   const [ref, box] = useSize<HTMLDivElement>();
   const offline = status === "offline";
