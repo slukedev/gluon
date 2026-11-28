@@ -144,9 +144,12 @@ export function TimeChart({ series, height = 140, yMax, format, formatTime, wind
             [0.5, 1].map((f) => (
               <g key={f}>
                 <line x1={0} x2={plotW} y1={Math.round(y(vMax * f)) + 0.5} y2={Math.round(y(vMax * f)) + 0.5} className={s.grid} />
-                <text x={plotW + 8} y={y(vMax * f) + 4} className={s.axis}>
-                  {format(vMax * f)}
-                </text>
+                {/* A scale too small for the unit rounds both marks to one figure; the half mark then says nothing. */}
+                {(f === 1 || format(vMax * f) !== format(vMax)) && (
+                  <text x={plotW + 8} y={y(vMax * f) + 4} className={s.axis}>
+                    {format(vMax * f)}
+                  </text>
+                )}
               </g>
             ))}
           <line x1={0} x2={plotW} y1={plotH - 0.5} y2={plotH - 0.5} className={s.baseline} />

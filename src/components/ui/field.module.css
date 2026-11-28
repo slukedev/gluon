@@ -102,22 +102,25 @@ textarea.input { height: auto; min-height: 88px; padding: 9px 11px; line-height:
   :global([data-theme="system"]) .switch:not([data-checked]) .thumb { background: var(--muted); }
 }
 
+/* The control sits beside its label until the label would be squeezed into a narrow column; then it drops below. */
 .row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 24px;
+  column-gap: 24px;
+  row-gap: 10px;
   padding: 14px 0;
   border-top: 1px solid var(--line);
 }
+.row > * { min-width: 0; max-width: 100%; }
 .row:first-child { border-top: 0; }
-.rowText { min-width: 0; }
+.rowText { flex: 1 1 9rem; }
 .rowLabel { font-size: var(--text-md); font-weight: 560; overflow-wrap: anywhere; }
 .rowDesc { font-size: var(--text-sm); color: var(--muted); margin-top: 2px; line-height: 1.45; text-wrap: pretty; }
 :global([data-density="compact"]) .row { padding: 10px 0; }
 @media (max-width: 640px) {
-  .row { gap: 16px; }
-  .row.stack { grid-template-columns: 1fr; gap: 10px; }
+  .row { column-gap: 16px; }
+  .row.stack > * { flex-basis: 100%; }
 }
 
 .checkRow { display: inline-flex; align-items: flex-start; gap: 10px; font-size: var(--text-md); cursor: pointer; line-height: 1.4; -webkit-tap-highlight-color: transparent; }
