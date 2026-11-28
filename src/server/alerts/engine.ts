@@ -63,16 +63,27 @@ export async function runRemedy(user: User, action: string, params: Record<strin
   }
 }
 
+const CHECK_LIMIT_MS = 60_000;
+
 let running = false;
+/** One hung check (a Docker call that never answers) is left behind so the rest still run and the next pass can start. */
 export async function runAllChecks() {
   if (running) return;
   running = true;
   try {
     for (const c of checks()) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        await c.run();
+        await Promise.race([
+          Promise.resolve().then(c.run),
+          new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`still running after ${CHECK_LIMIT_MS / 1000} s`)), CHECK_LIMIT_MS);
+          }),
+        ]);
       } catch (e) {
         console.error(`[gluon] check ${c.name} failed`, e);
+      } finally {
+        clearTimeout(timer);
       }
     }
   } finally {
