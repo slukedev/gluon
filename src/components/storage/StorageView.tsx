@@ -44,11 +44,14 @@ export function storageSummary(inv: Inventory, fmt: ReturnType<typeof useFormat>
   for (const d of failing) problems.push(`The ${d.title} is failing.`);
   if (loose.length) problems.push(loose.length === 1 ? `${loose[0]!.primaryMount} won't come back after a restart.` : `${loose.length} drives won't come back after a restart.`);
   for (const d of wearing) problems.push(`The ${d.title} is showing wear.`);
-  const quiet = unused.length === 1 ? `The ${unused[0]!.title} isn't being used.` : unused.length ? `${unused.length} drives aren't being used.` : "";
   if (!disks.length) return "Drive details aren't available on this machine.";
+  // Free space is only a figure when something is mounted; with every disk idle, one sentence says both.
+  const allIdle = seen.size === 0 && unused.length === disks.length;
+  const quiet = allIdle ? "" : unused.length === 1 ? `The ${unused[0]!.title} isn't in use.` : unused.length ? `${unused.length} disks aren't in use.` : "";
   return (
     <>
-      {fmt.plural(disks.length, "disk")}, <span className="num">{fmt.bytes(free)}</span> free.{" "}
+      {fmt.plural(disks.length, "disk")}
+      {allIdle ? (disks.length === 1 ? ", not in use." : ", none in use.") : seen.size === 0 ? ", nothing mounted." : <>, <span className="num">{fmt.bytes(free)}</span> free.</>}{" "}
       {problems.length > 0 && <b>{problems.join(" ")} </b>}
       {quiet}
     </>

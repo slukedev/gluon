@@ -337,7 +337,7 @@ async function build(): Promise<InventoryState> {
     else if (state === "in-use") {
       const pct = usage && usage.size ? Math.round((usage.used / usage.size) * 100) : null;
       summary = mountTargets.length ? `Mounted at ${listJoin(mountTargets.slice(0, 3))}${pct !== null ? ` · ${pct}% used` : ""}.` : "In use (LVM, RAID or encryption).";
-    } else if (state === "empty") summary = "Blank: nothing on it yet.";
+    } else if (state === "empty") summary = "Not in use.";
     else {
       const kinds = [...new Set(all.map((v) => (v.role === "filesystem" ? v.fstype ?? "data" : v.role === "lvm-member" ? "LVM" : v.role === "raid-member" ? "RAID" : v.role === "encrypted" ? "encrypted" : v.role === "unformatted" ? "unformatted" : null)).filter(Boolean))];
       summary = `Not in use${kinds.length ? ` · has ${listJoin(kinds as string[])} partition${all.length === 1 ? "" : "s"}` : ""}.`;
