@@ -81,6 +81,8 @@ function blockList(): net.BlockList {
     }
   }
   for (const cidr of getSetting("homeNetworks")) {
+    // Saved before the check was strict enough: never let one make the internet home.
+    if (homeRangeProblem(cidr)) continue;
     const [addr, bits] = cidr.split("/");
     const type = net.isIPv6(addr ?? "") ? "ipv6" : net.isIPv4(addr ?? "") ? "ipv4" : null;
     if (!addr || !type) continue;
@@ -92,6 +94,32 @@ function blockList(): net.BlockList {
   }
   cache = { at: Date.now(), list, prefixes };
   return list;
+}
+
+const MAPPED_V4 = (() => {
+  const l = new net.BlockList();
+  l.addSubnet("::ffff:0:0", 96, "ipv6");
+  return l;
+})();
+
+/**
+ * Why a range someone typed can't be a home network, or null. Anything wider than a /8 (IPv4) or /32
+ * (IPv6) would make much of the internet "home", and so would an IPv6 range reaching into
+ * ::ffff:0:0/96, where every IPv4 address also lives.
+ */
+export function homeRangeProblem(cidr: string): string | null {
+  const [addr = "", bits, ...rest] = cidr.trim().split("/");
+  const type = family(addr);
+  const max = type === "ipv4" ? 32 : 128;
+  const prefix = bits === undefined ? max : /^\d{1,3}$/.test(bits) ? Number(bits) : NaN;
+  if (!type || rest.length || !(prefix >= 0 && prefix <= max)) return "Use an address range like 192.168.50.0/24";
+  const tooWide = "That range is too wide: it would treat much of the internet as home.";
+  if (type === "ipv4") return prefix < 8 ? tooWide : null;
+  if (prefix < 32) return tooWide;
+  const list = new net.BlockList();
+  list.addSubnet(addr, prefix, "ipv6");
+  if (prefix <= 96 ? list.check("::ffff:0:0", "ipv6") : MAPPED_V4.check(addr, "ipv6") && prefix - 96 < 8) return tooWide;
+  return null;
 }
 
 export function resetZoneCache() {

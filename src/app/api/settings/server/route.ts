@@ -1,27 +1,19 @@
 import { z } from "zod";
-import net from "node:net";
 import { route } from "@/server/api";
 import { AppError } from "@/server/errors";
 import { getSetting, setSetting } from "@/server/settings";
 import { audit } from "@/server/audit";
 import { hasRecentAuth } from "@/server/auth/session";
 import { mfaPolicy } from "@/server/auth/policy";
-import { localIpv6Prefixes, resetZoneCache } from "@/server/net-zone";
+import { homeRangeProblem, localIpv6Prefixes, resetZoneCache } from "@/server/net-zone";
 
-const cidr = z.string().max(64).refine((v) => {
-  const [addr, bits] = v.split("/");
-  if (!addr) return false;
-  const fam = net.isIPv4(addr) ? 4 : net.isIPv6(addr) ? 6 : 0;
-  if (!fam) return false;
-  if (bits === undefined) return true;
-  const n = Number(bits);
-  return Number.isInteger(n) && n >= 0 && n <= (fam === 4 ? 32 : 128);
-}, "Use an address range like 192.168.50.0/24").refine((v) => {
-  // Anything wider than a /8 (IPv4) or /32 (IPv6) would make a large part of the internet "home".
-  const [addr, bits] = v.split("/");
-  if (bits === undefined) return true;
-  return Number(bits) >= (net.isIPv4(addr ?? "") ? 8 : 32);
-}, "That range is too wide: it would treat much of the internet as home.");
+const cidr = z
+  .string()
+  .max(64)
+  .superRefine((v, ctx) => {
+    const problem = homeRangeProblem(v);
+    if (problem) ctx.addIssue({ code: "custom", message: problem });
+  });
 
 const body = z.object({
   serverName: z.string().trim().min(1, "Give the server a name.").max(40).optional(),

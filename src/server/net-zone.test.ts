@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("./settings", () => ({ getSetting: (k: string) => (k === "homeNetworks" ? [] : "") }));
+const saved = vi.hoisted(() => ({ homeNetworks: [] as string[] }));
+vi.mock("./settings", () => ({ getSetting: (k: string) => (k === "homeNetworks" ? saved.homeNetworks : "") }));
 vi.mock("./docker/client", () => ({ docker: () => ({ listNetworks: async () => [] }) }));
-const { clientInfo, noteDockerNetworks, PEER_HEADER } = await import("./net-zone");
+const { clientInfo, homeRangeProblem, isHomeIp, noteDockerNetworks, PEER_HEADER, resetZoneCache } = await import("./net-zone");
 
 const h = (o: Record<string, string>) => new Headers(o);
 
@@ -69,5 +70,31 @@ describe("clientInfo and containers on this machine", () => {
     expect(clientInfo(h({ [PEER_HEADER]: "172.18.0.5", "x-forwarded-for": "192.168.1.30" }))).toEqual({ ip: "192.168.1.30", zone: "home" });
     expect(clientInfo(h({ [PEER_HEADER]: "172.18.0.5", "x-forwarded-for": "172.18.0.1" }))).toEqual({ ip: "172.18.0.1", zone: "home" });
     expect(clientInfo(h({ [PEER_HEADER]: "172.18.0.5", "x-forwarded-for": "172.17.0.1" }))).toEqual({ ip: "172.17.0.1", zone: "home" });
+  });
+});
+
+describe("home network ranges", () => {
+  it.each(["192.168.50.0/24", "10.0.0.0/8", "203.0.113.9", "2001:db8:1::/48", "fd00::/32", "::ffff:192.168.1.0/120"])("accepts %s", (cidr) => {
+    expect(homeRangeProblem(cidr)).toBeNull();
+  });
+
+  it.each(["0.0.0.0/0", "100.0.0.0/7", "::/0", "2000::/3", "::/32", "::ffff:0:0/96", "::ffff:0:0/100", "::ffff:808:0/103"])("refuses %s as too wide", (cidr) => {
+    expect(homeRangeProblem(cidr)).toMatch(/too wide/);
+  });
+
+  it.each(["", "home", "192.168.1.0/33", "192.168.1.0/", "192.168.1.0/2x", "10.0.0.0/8/9", "::1/129"])("refuses %j as malformed", (cidr) => {
+    expect(homeRangeProblem(cidr)).toMatch(/address range/);
+  });
+
+  it("ignores a too-wide range saved before the check, so the internet never counts as home", () => {
+    saved.homeNetworks = ["::/32", "198.51.100.0/24"];
+    resetZoneCache();
+    try {
+      expect(isHomeIp("8.8.8.8")).toBe(false);
+      expect(isHomeIp("198.51.100.20")).toBe(true);
+    } finally {
+      saved.homeNetworks = [];
+      resetZoneCache();
+    }
   });
 });
