@@ -14,5 +14,6 @@ export default async function StoragePage({ searchParams }: { searchParams: Prom
   const usage = typeof sp.usage === "string" && sp.usage.startsWith("/") ? sp.usage : null;
   const tab: StorageTab = usage ? "space" : TABS.includes(sp.tab as StorageTab) ? (sp.tab as StorageTab) : "disks";
   // Reading the drives runs host commands, so it isn't awaited: the title and tabs go out first.
-  return <Seeded at={at}><StorageView initial={getInventory()} tab={tab} usage={usage} /></Seeded>;
+  // A failed read is shown (with a retry) by the view rather than blanking the page.
+  return <Seeded at={at}><StorageView initial={getInventory().catch(() => null)} tab={tab} usage={usage} /></Seeded>;
 }

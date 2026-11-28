@@ -3,7 +3,7 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Refresh } from "iconoir-react";
 import type { Finding } from "@/server/findings";
-import { api, useApi } from "@/lib/client/api";
+import { api, useApi, type ApiError } from "@/lib/client/api";
 import { useFormat } from "@/components/PrefsProvider";
 import { Page, PageHeader, Panel, Notice, Empty, Skeleton } from "@/components/ui/Surface";
 import { Button } from "@/components/ui/Button";
@@ -44,13 +44,13 @@ export function storageSummary(inv: Inventory, fmt: ReturnType<typeof useFormat>
   for (const d of failing) problems.push(`The ${d.title} is failing.`);
   if (loose.length) problems.push(loose.length === 1 ? `${loose[0]!.primaryMount} won't come back after a restart.` : `${loose.length} drives won't come back after a restart.`);
   for (const d of wearing) problems.push(`The ${d.title} is showing wear.`);
-  const quiet = unused.map((d) => `The ${d.title} isn't being used.`);
+  const quiet = unused.length === 1 ? `The ${unused[0]!.title} isn't being used.` : unused.length ? `${unused.length} drives aren't being used.` : "";
   if (!disks.length) return "Drive details aren't available on this machine.";
   return (
     <>
       {fmt.plural(disks.length, "disk")}, <span className="num">{fmt.bytes(free)}</span> free.{" "}
       {problems.length > 0 && <b>{problems.join(" ")} </b>}
-      {quiet.join(" ")}
+      {quiet}
     </>
   );
 }
@@ -129,7 +129,7 @@ function StorageSkeleton({ tab }: { tab: StorageTab }) {
   );
 }
 
-export function StorageView({ initial, tab, usage }: { initial: Promise<Inventory>; tab: StorageTab; usage: string | null }) {
+export function StorageView({ initial, tab, usage }: { initial: Promise<Inventory | null>; tab: StorageTab; usage: string | null }) {
   return (
     <Page>
       <React.Suspense fallback={<StorageSkeleton tab={tab} />}>
@@ -139,13 +139,29 @@ export function StorageView({ initial, tab, usage }: { initial: Promise<Inventor
   );
 }
 
-function StorageLive({ initial: pending, tab, usage }: { initial: Promise<Inventory>; tab: StorageTab; usage: string | null }) {
+function StorageLive({ initial: pending, tab, usage }: { initial: Promise<Inventory | null>; tab: StorageTab; usage: string | null }) {
   const initial = React.use(pending);
+  const { data: inv, error, isValidating, mutate } = useApi<Inventory>("/api/storage", { refresh: 15_000, fallbackData: initial ?? undefined });
+  if (inv) return <StorageReady inv={inv} error={error} mutate={mutate} tab={tab} usage={usage} />;
+  if (!error) return <StorageSkeleton tab={tab} />;
+  return (
+    <>
+      <PageHeader title="Storage" summary="The drives couldn't be read." />
+      <StorageTabs tab={tab} />
+      <div className={s.tabBody}>
+        <Notice tone="fault" title={error.code === "network" ? "Can't reach the server" : "Couldn't read the drives"} action={<Button size="sm" loading={isValidating} onClick={() => void mutate()}>Try again</Button>}>
+          {error.code === "network" ? "Check the connection, then try again." : error.message}
+        </Notice>
+      </div>
+    </>
+  );
+}
+
+function StorageReady({ inv, error, mutate, tab, usage }: { inv: Inventory; error: ApiError | undefined; mutate: () => Promise<unknown>; tab: StorageTab; usage: string | null }) {
   const fmt = useFormat();
   const router = useRouter();
   const params = useSearchParams();
   const jobParam = params.get("job");
-  const { data: inv = initial, error, mutate } = useApi<Inventory>("/api/storage", { refresh: 15_000, fallbackData: initial });
   const { data: findings, mutate: mutateFindings } = useApi<Finding[]>("/api/findings", { refresh: 30_000 });
   const running = useRunningJob();
   const [checking, setChecking] = React.useState(false);
