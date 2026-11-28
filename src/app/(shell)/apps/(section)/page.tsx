@@ -28,6 +28,7 @@ export default async function AppsPage({ searchParams }: { searchParams: Promise
 }
 
 async function Apps({ sort, filter }: { sort: Sort; filter: Filter }) {
-  const [apps, platform] = await Promise.all([listApps(), activePlatform().catch(() => "none" as const)]);
+  // Docker down or restarting: the view says so under the tabs and retries, rather than replacing the whole section.
+  const [apps, platform] = await Promise.all([listApps().catch(() => null), activePlatform().catch(() => "none" as const)]);
   return <AppsView initial={apps} platform={platform} initialSort={sort} initialFilter={filter} />;
 }

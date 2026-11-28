@@ -11,6 +11,7 @@ import { useLiveValue } from "@/lib/client/live";
 import { useFormat, usePrefs } from "@/components/PrefsProvider";
 import { Empty, Notice } from "@/components/ui/Surface";
 import { AppsHead, AppsBody } from "@/components/apps/AppsFrame";
+import { AppsTabLoading } from "./AppsTabLoading";
 import { NewAppButton } from "@/components/builder/NewAppButton";
 import { StateLine } from "@/components/ui/StateLine";
 import { Segmented } from "@/components/ui/Field";
@@ -41,7 +42,30 @@ type Filter = "all" | "problems" | "public" | "stopped";
 type Sort = "name" | "cpu" | "memory";
 
 
-export function AppsView({ initial, initialSort, initialFilter, platform }: { initial: AppSummary[]; initialSort: Sort; initialFilter: Filter; platform: Platform }) {
+type AppsViewProps = { initialSort: Sort; initialFilter: Filter; platform: Platform };
+
+/** `initial` is null when Docker couldn't be asked while the page rendered: the tabs stay, and the list arrives once it answers. */
+export function AppsView({ initial, ...rest }: AppsViewProps & { initial: AppSummary[] | null }) {
+  return initial ? <AppsList initial={initial} {...rest} /> : <AppsUnread {...rest} />;
+}
+
+function AppsUnread(props: AppsViewProps) {
+  const { data, error, isValidating, mutate } = useApi<AppSummary[]>("/api/apps", { refresh: 8000 });
+  if (data) return <AppsList initial={data} {...props} />;
+  if (!error) return <AppsTabLoading />;
+  return (
+    <>
+      <AppsHead summary="The apps can't be listed right now." />
+      <AppsBody>
+        <Notice tone="fault" title={error.code === "network" ? "Can't reach the server" : "Couldn't ask Docker for the apps"} action={<Button size="sm" loading={isValidating} onClick={() => void mutate()}>Try again</Button>}>
+          {error.code === "network" ? "Check the connection, then try again." : error.code === "internal" ? "Docker may be restarting. Try again in a moment." : error.message}
+        </Notice>
+      </AppsBody>
+    </>
+  );
+}
+
+function AppsList({ initial, initialSort, initialFilter, platform }: AppsViewProps & { initial: AppSummary[] }) {
   const router = useRouter();
   const pinHome = usePinToHome();
   const fmt = useFormat();
