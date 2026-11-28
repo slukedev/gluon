@@ -523,6 +523,30 @@ describe("upcoming: RRULE", () => {
     expect(starts(text)).toEqual(["2026-11-10T09:00:00.000Z"]);
   });
 
+  it("ends a decades-old counted series on exactly its last occurrence", () => {
+    // Every third day from 1995-03-03: the 3,860th falls on 2026-11-12, the next on the 15th.
+    expect(starts(series("19950303T090000Z", "FREQ=DAILY;INTERVAL=3;COUNT=3860"))).toEqual(["2026-11-12T09:00:00.000Z"]);
+    expect(starts(series("19950303T090000Z", "FREQ=DAILY;INTERVAL=3;COUNT=3861"))).toEqual(["2026-11-12T09:00:00.000Z", "2026-11-15T09:00:00.000Z"]);
+  });
+
+  it("counts a weekly series whose first week starts after some of its weekdays", () => {
+    // Mon/Wed/Fri from Wednesday 7 January: the 134th is Friday 13 November.
+    const text = (count: number) => cal(ev("UID:w@example.com", "SUMMARY:W", "DTSTART;TZID=Europe/London:20260107T090000", `RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR;COUNT=${count}`));
+    expect(starts(text(134))).toEqual(["2026-11-11T09:00:00.000Z", "2026-11-13T09:00:00.000Z"]);
+    expect(starts(text(135))).toEqual(["2026-11-11T09:00:00.000Z", "2026-11-13T09:00:00.000Z", "2026-11-16T09:00:00.000Z"]);
+  });
+
+  it("expands thousands of long-running counted series well within the time budget", { timeout: 5000 }, () => {
+    const many = Array.from({ length: 2000 }, (_, i) =>
+      ev(`UID:s${i}@example.com`, "SUMMARY:S", "DTSTART;TZID=Europe/London:20100104T090000", "RRULE:FREQ=WEEKLY;COUNT=2000;BYDAY=MO,WE"),
+    ).join("\n");
+    const t0 = performance.now();
+    const out = list(cal(many), { limit: 5000 });
+    expect(performance.now() - t0).toBeLessThan(1000);
+    // Every series reaches the window, so none was cut off by the budget.
+    expect(new Set(out.map((e) => e.id.split("@")[0])).size).toBe(2000);
+  });
+
   it.each([
     "FREQ=MONTHLY;BYDAY=MO,TU;BYSETPOS=-1",
     "FREQ=DAILY;BYHOUR=9,17",

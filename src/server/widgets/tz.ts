@@ -19,6 +19,8 @@ function fmt(tz: string): Intl.DateTimeFormat {
       minute: "2-digit",
       second: "2-digit",
     });
+    // Zone names come from calendar feeds too, in any letter case; keep the cache from growing with them.
+    if (fmtCache.size >= 500) fmtCache.clear();
     fmtCache.set(tz, f);
   }
   return f;
@@ -59,8 +61,11 @@ function utcMs(y: number, mo: number, d: number, h = 0, mi = 0, s = 0): number {
 
 const wallMs = (w: Wall) => utcMs(w.y, w.m - 1, w.d, w.h, w.mi, w.s);
 
+const isUtc = (zone: Zone) => zone.kind === "iana" && (zone.name === "UTC" || zone.name === "Etc/UTC");
+
 function offsetAt(ms: number, zone: Zone): number {
   if (zone.kind === "fixed") return zone.offsetMs;
+  if (isUtc(zone)) return 0;
   const floored = Math.floor(ms / 1000) * 1000;
   return wallMs(ianaParts(floored, zone.name)) - floored;
 }
@@ -69,6 +74,7 @@ function offsetAt(ms: number, zone: Zone): number {
 export function zonedToUtc(w: Wall, zone: Zone): number {
   const wall = wallMs(w);
   if (zone.kind === "fixed") return wall - zone.offsetMs;
+  if (isUtc(zone)) return wall;
   // The offsets in force a day either side cover any single transition near this wall time.
   const offs = [...new Set([offsetAt(wall - 86_400_000, zone), offsetAt(wall, zone), offsetAt(wall + 86_400_000, zone)])];
   const fits = offs.filter((o) => offsetAt(wall - o, zone) === o);
@@ -77,8 +83,8 @@ export function zonedToUtc(w: Wall, zone: Zone): number {
 }
 
 export function utcToWall(ms: number, zone: Zone): Wall {
-  if (zone.kind === "fixed") {
-    const d = new Date(ms + zone.offsetMs);
+  if (zone.kind === "fixed" || isUtc(zone)) {
+    const d = new Date(ms + (zone.kind === "fixed" ? zone.offsetMs : 0));
     return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate(), h: d.getUTCHours(), mi: d.getUTCMinutes(), s: d.getUTCSeconds() };
   }
   return ianaParts(ms, zone.name);

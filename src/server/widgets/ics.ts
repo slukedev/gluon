@@ -236,13 +236,19 @@ function withDate(t: IcsTime, y: number, m: number, d: number): IcsTime {
   return { ...t, wall: { ...t.wall, y, m, d } };
 }
 
-/** Candidate dates (as day numbers) of a rule, in order, starting at the event's first date. */
-function* ruleDates(ev: VEvent, rule: RRule, fromDay: number, maxDay: number): Generator<number> {
+/**
+ * Candidate dates (as day numbers) of a rule, in order, starting at the event's first date. `seen.n`
+ * starts at the number of occurrences skipped to get near `fromDay`.
+ */
+function* ruleDates(ev: VEvent, rule: RRule, fromDay: number, maxDay: number, seen: { n: number }): Generator<number> {
   const s = ev.start.wall;
   const startDay = dayNumber(s.y, s.m, s.d);
   const fastForward = rule.count === null;
   if (rule.freq === "DAILY") {
-    let k = fastForward ? Math.max(0, Math.floor((fromDay - startDay) / rule.interval) - 1) : 0;
+    // With no filters every step is one occurrence, so a COUNT rule can skip ahead and tally what it passed.
+    const uniform = !rule.byMonth.length && !rule.byDay.length;
+    let k = fastForward || uniform ? Math.max(0, Math.floor((fromDay - startDay) / rule.interval) - 1) : 0;
+    if (!fastForward) seen.n = k;
     for (; ; k++) {
       const day = startDay + k * rule.interval;
       if (day > maxDay) return;
@@ -256,7 +262,10 @@ function* ruleDates(ev: VEvent, rule: RRule, fromDay: number, maxDay: number): G
     const days = rule.byDay.length ? [...new Set(rule.byDay.map((b) => b.wd))] : [weekday(startDay)];
     const weekStart = startDay - ((weekday(startDay) - rule.wkst + 7) % 7);
     const order = days.map((wd) => (wd - rule.wkst + 7) % 7).sort((a, b) => a - b);
-    let k = fastForward ? Math.max(0, Math.floor((fromDay - weekStart) / (7 * rule.interval)) - 1) : 0;
+    const uniform = !rule.byMonth.length;
+    let k = fastForward || uniform ? Math.max(0, Math.floor((fromDay - weekStart) / (7 * rule.interval)) - 1) : 0;
+    // Every whole week passed holds each listed weekday once, less the first week's days before the start.
+    if (!fastForward && k > 0) seen.n = k * order.length - order.filter((o) => weekStart + o < startDay).length;
     for (; ; k++) {
       const ws = weekStart + k * 7 * rule.interval;
       if (ws > maxDay) return;
@@ -343,18 +352,24 @@ function expand(ev: VEvent, r: Resolver, windowStart: number, windowEnd: number,
       : null;
     const winStartWall = utcToWall(windowStart - durationMs - 86_400_000, r.zoneOf(ev.start));
     const fromDay = dayNumber(winStartWall.y, winStartWall.m, winStartWall.d);
-    let n = 0;
     let guard = 0;
     const endWall = utcToWall(windowEnd, r.zoneOf(ev.start));
     const maxDay = dayNumber(endWall.y, endWall.m, endWall.d) + 1;
-    for (const day of ruleDates(ev, rule, fromDay, maxDay)) {
+    // A wall date is within a day of its UTC date, so these bounds hold in any zone.
+    const untilDay = untilMs === null ? null : Math.floor(untilMs / 86_400_000);
+    const seen = { n: 0 };
+    for (const day of ruleDates(ev, rule, fromDay, maxDay, seen)) {
       if (++guard > 20_000) break;
+      // Long before the window an occurrence only counts towards COUNT; converting it to an instant is the costly part.
+      if (day < fromDay - 1 && (untilDay === null || day + 2 <= untilDay)) {
+        if (rule.count !== null && ++seen.n > rule.count) break;
+        continue;
+      }
       const { y, m, d } = fromDayNumber(day);
       const occ = withDate(ev.start, y, m, d);
       const at = instant(occ, r);
       if (untilMs !== null && at > untilMs) break;
-      n++;
-      if (rule.count !== null && n > rule.count) break;
+      if (rule.count !== null && ++seen.n > rule.count) break;
       if (at > windowEnd) break;
       out.push({ ev, start: occ, recurring: true });
     }
