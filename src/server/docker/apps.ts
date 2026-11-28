@@ -360,6 +360,45 @@ export function listApps(): Promise<AppSummary[]> {
   return value;
 }
 
+type RefCache = Map<string, string | null>;
+const refCache = ((globalThis as typeof globalThis & { __gluonImageRefs?: RefCache }).__gluonImageRefs ??= new Map());
+
+/**
+ * Docker lists a container's image by id ("sha256:...") once its tag has moved on, for example after
+ * a newer image was pulled but the container not yet recreated. Everything that tells apps apart by
+ * image (which chat server it is, update checks) needs the name, so read back what the container was
+ * started from, or else a tag the image still carries.
+ */
+export async function nameImages(list: Pick<Docker.ContainerInfo, "Id" | "Image" | "ImageID">[]): Promise<void> {
+  const d = docker();
+  await Promise.all(
+    list.map(async (c) => {
+      if (!c.Image.startsWith("sha256:")) return;
+      const key = `${c.Id}:${c.ImageID || c.Image}`;
+      let ref = refCache.get(key);
+      if (ref === undefined) {
+        ref = null;
+        try {
+          const started = (await d.getContainer(c.Id).inspect()).Config?.Image ?? "";
+          if (started && !started.startsWith("sha256:")) ref = started;
+        } catch {
+          /* gone */
+        }
+        if (!ref) {
+          try {
+            ref = (await d.getImage(c.ImageID || c.Image).inspect()).RepoTags?.find((t) => !t.endsWith(":<none>")) ?? null;
+          } catch {
+            /* gone */
+          }
+        }
+        if (refCache.size > 500) refCache.clear();
+        refCache.set(key, ref);
+      }
+      if (ref) c.Image = ref;
+    }),
+  );
+}
+
 function toSummary(c: Docker.ContainerInfo): ContainerSummary {
   const health = healthFrom(c.Status);
   const ports: PortMapping[] = [];
@@ -468,6 +507,7 @@ async function buildApps(): Promise<AppSummary[]> {
     return Promise.all([on ? umbrelApps().catch(() => null) : null, on ? umbrelStores().catch(() => null) : null]);
   });
   const [list, [uApps, uStores], lan] = await Promise.all([docker().listContainers({ all: true }), umbrelView, lanHost()]);
+  await nameImages(list);
   const uById = new Map((uApps ?? []).map((a) => [a.id, a]));
   const latestById = new Map<string, { version: string; storeId: string }>();
   for (const st of uStores ?? []) for (const a of st.apps) if (!latestById.has(a.id)) latestById.set(a.id, { version: a.version, storeId: st.id });
