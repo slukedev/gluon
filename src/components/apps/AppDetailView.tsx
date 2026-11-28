@@ -624,7 +624,7 @@ function Overview({ app, busy, onContainer }: { app: AppDetail; busy: string | n
           <div>
             <div className={s.chartHead}>
               <span className="label">CPU</span>
-              <strong className="num">{liveCpu === null ? "No reading" : fmt.percent(liveCpu, 1)}</strong>
+              {liveCpu !== null && <strong className="num">{fmt.percent(liveCpu, 1)}</strong>}
             </div>
             {!hist && histError ? (
               noHistory
@@ -637,7 +637,7 @@ function Overview({ app, busy, onContainer }: { app: AppDetail; busy: string | n
           <div>
             <div className={s.chartHead}>
               <span className="label">Memory</span>
-              <strong className="num">{liveMem === null ? "No reading" : fmt.bytes(liveMem)}</strong>
+              {liveMem !== null && <strong className="num">{fmt.bytes(liveMem)}</strong>}
             </div>
             {!hist && histError ? (
               noHistory
@@ -650,7 +650,7 @@ function Overview({ app, busy, onContainer }: { app: AppDetail; busy: string | n
         </div>
       </Panel>
 
-      <Panel title="How it's put together" meta={<span className={s.panelHint}>Click a container for its actions</span>} className={s.span2}>
+      <Panel title="How it's put together" className={s.span2}>
         {app.details.length === 0 ? (
           <p className={s.padless}>{umbrelBusy(app.umbrel?.state) ? "Umbrel is still setting it up. Its containers show here once they exist." : "No containers right now."}</p>
         ) : (

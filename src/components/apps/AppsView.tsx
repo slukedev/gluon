@@ -274,6 +274,7 @@ export function AppsView({ initial, initialSort, initialFilter, platform }: { in
 
       {/* The table sizes its columns to this box, not the window, so the sidebar can't push it off the edge. */}
       <div className={s.list}>
+      {apps.length > 0 && (
       <div className={s.toolbar}>
         <label className={s.filter}>
           <Search aria-hidden />
@@ -303,10 +304,25 @@ export function AppsView({ initial, initialSort, initialFilter, platform }: { in
           />
         </span>
       </div>
+      )}
 
       {rows.length === 0 ? (
         <Empty
-          title={term ? `Nothing matches “${q.trim()}”` : filter === "problems" ? "Nothing needs a hand" : filter === "stopped" ? "Nothing is stopped" : filter === "public" ? "Nothing is public" : "No apps yet"}
+          title={
+            term
+              ? `Nothing matches “${q.trim()}”`
+              : filter === "problems"
+                ? "Nothing needs a hand"
+                : filter === "stopped"
+                  ? "Nothing is stopped"
+                  : filter === "public"
+                    ? "Nothing is public"
+                    : platform === "umbrel"
+                      ? "Get one from the app store, or make your own"
+                      : platform === "casaos"
+                        ? "Install one from CasaOS, or make your own"
+                        : "Make one here, or start a Compose stack"
+          }
           action={
             !term && filter === "all" ? (
               <>
@@ -337,11 +353,7 @@ export function AppsView({ initial, initialSort, initialFilter, platform }: { in
                 ? "Stopped apps show up here."
                 : filter === "public"
                   ? "Publish one from Network to reach it away from home."
-                  : platform === "umbrel"
-                    ? "Get one from the app store, or make your own."
-                    : platform === "casaos"
-                      ? "Install one from CasaOS, or make your own."
-                      : "Make one here, or start a Compose stack and it shows up."}
+                  : null}
         </Empty>
       ) : (
         // A filter is used constantly, so its rows swap in place: no remount, no fade.
