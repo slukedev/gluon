@@ -140,7 +140,7 @@ export function useConnectTarget(kind: IntegrationKind, integrationId?: string |
 
 export function WidgetState({ line, title, children, action }: { line?: LineState; title: string; children?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className={l.state} role="status">
+    <div className={l.state} role="status" data-widget-state="">
       <div>
         <b className={l.stateTitle}>
           {line && <StateLine state={line} size={13} />}

@@ -6,7 +6,7 @@
 .subWrap { flex: none; margin: 0; font-size: var(--text-sm); color: var(--muted); line-height: 1.5; max-width: 44ch; }
 
 /* Lists show whole rows only: a row that doesn't fit is hidden (useFit) and counted in the link underneath. */
-.list { flex: 1 1 auto; list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.list { flex: 0 1 auto; list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .list > li, .cells > li { flex: none; }
 .list > [aria-hidden], .cells > [aria-hidden] { visibility: hidden; }
 .list[data-flush] { margin-top: 0; }
@@ -47,6 +47,8 @@
 }
 
 .more { flex: none; margin-top: auto; align-self: flex-start; font-size: var(--text-sm); color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line-strong); }
+/* After a list the link reads as its last line, not as a footer stranded at the bottom of the tile. */
+.list + .more { margin-top: 2px; }
 @media (hover: hover) and (pointer: fine) {
   .more:hover { color: var(--ink); text-decoration-color: currentColor; }
 }

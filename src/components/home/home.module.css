@@ -244,8 +244,18 @@
   .widget { grid-column: span 12; }
   .widget[data-size="s"], .widget[data-size="t"], .widget[data-size="c"] { grid-column: span 6; }
   .widget[data-size="i"] { grid-column: span 4; }
-  /* Rows are 64px here, so wide tiles take a third row to keep their content whole. */
-  .widget[data-size="m"], .widget[data-size="w"] { grid-row: span 3; }
+  /*
+   * One column: a tile's height follows what it shows. The desktop size sets only a floor (64px rows, wide tiles
+   * three of them), so graphs keep their height, a list grows to its rows, and an empty or error state is no
+   * taller than its words. The desktop grid sizes stay as chosen.
+   */
+  .grid { grid-auto-rows: auto; }
+  .widget { --phone-rows: var(--rows); grid-row: auto; min-height: calc(var(--phone-rows) * 64px + (var(--phone-rows) - 1) * 12px); max-height: 560px; }
+  .widget[data-size="m"], .widget[data-size="w"] { --phone-rows: 3; }
+  /* Words, figures and lists (and any empty or error state) have a height of their own; graphs that fill
+     their tile (network, spectrum, photos) keep the floor above. */
+  .widget:is([data-type="status"], [data-type="vitals"], [data-type="problems"], [data-type="household.internet"], [data-type="system.logins"], [data-type^="server."]),
+  .widget:has(> .body > [data-widget-state]) { --phone-rows: min(var(--rows), 2); }
 }
 /* Small phones: small and tall widgets take the full width; icons and short cards keep sharing a row. */
 @media (max-width: 480px) {
