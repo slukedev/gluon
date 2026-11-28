@@ -131,21 +131,43 @@ export function resetZoneCache() {
  * private ranges above, so without this every container (including one an app store image
  * compromised) would count as home. Each network's gateway is this machine itself and stays home;
  * macvlan and ipvlan networks hand out addresses on the real LAN and are left alone.
+ *
+ * Of those containers, only proxies may say who they forward for: Gluon's own Caddy container, or
+ * one publishing host port 80 or 443. Any other container could write a home address into the
+ * header itself.
  */
 interface DockerNets {
   at: number;
   list: net.BlockList;
   gateways: Set<string>;
+  proxies: Set<string>;
+  /** Kept when Docker stops answering, so the proxy Gluon was set up with keeps working. */
+  caddy: Set<string>;
 }
-type DG = typeof globalThis & { __gluonZoneDockerNets?: DockerNets; __gluonZoneDockerBusy?: boolean };
+type DG = typeof globalThis & { __gluonZoneDockerNets?: DockerNets; __gluonZoneDockerBusy?: boolean; __gluonZoneDockerTried?: number };
 const dg = globalThis as DG;
+
+const CADDY_NAME = process.env.GLUON_CADDY_CONTAINER ?? process.env.TEND_CADDY_CONTAINER ?? "caddy";
+const FRESH_MS = 60_000;
+/** An unknown container may be a proxy that just started: ask again soon, but never per request. */
+const RETRY_MS = 10_000;
 
 export interface DockerNetworkInfo {
   Driver?: string;
   IPAM?: { Config?: Array<{ Subnet?: string; Gateway?: string }> | null } | null;
 }
 
-export function noteDockerNetworks(networks: DockerNetworkInfo[]) {
+export interface DockerContainerInfo {
+  Names?: string[];
+  Ports?: Array<{ PublicPort?: number }>;
+  NetworkSettings?: { Networks?: Record<string, { IPAddress?: string; GlobalIPv6Address?: string }> | null } | null;
+}
+
+function addressesOf(c: DockerContainerInfo): string[] {
+  return Object.values(c.NetworkSettings?.Networks ?? {}).flatMap((n) => [parseAddr(n.IPAddress), parseAddr(n.GlobalIPv6Address)].filter((a): a is string => !!a));
+}
+
+export function noteDockerNetworks(networks: DockerNetworkInfo[], containers: DockerContainerInfo[] = []) {
   const list = new net.BlockList();
   const gateways = new Set<string>();
   for (const n of networks) {
@@ -168,29 +190,76 @@ export function noteDockerNetworks(networks: DockerNetworkInfo[]) {
       }
     }
   }
-  dg.__gluonZoneDockerNets = { at: Date.now(), list, gateways };
+  const proxies = new Set<string>();
+  const caddy = new Set<string>();
+  for (const c of containers) {
+    const isCaddy = (c.Names ?? []).some((n) => n.replace(/^\//, "") === CADDY_NAME);
+    const edge = (c.Ports ?? []).some((p) => p.PublicPort === 80 || p.PublicPort === 443);
+    if (!isCaddy && !edge) continue;
+    for (const a of addressesOf(c)) {
+      proxies.add(a);
+      if (isCaddy) caddy.add(a);
+    }
+  }
+  dg.__gluonZoneDockerNets = { at: Date.now(), list, gateways, proxies, caddy };
 }
 
-/** Asks Docker again at most once a minute, in the background; the answer is used from then on. */
+/** In the background, never on a request's path; the answer is used from then on. */
 export async function refreshDockerNetworks(): Promise<void> {
   if (dg.__gluonZoneDockerBusy) return;
   dg.__gluonZoneDockerBusy = true;
+  dg.__gluonZoneDockerTried = Date.now();
   try {
     const { docker } = await import("./docker/client");
-    noteDockerNetworks((await docker().listNetworks()) as DockerNetworkInfo[]);
+    const d = docker();
+    const [networks, containers] = await Promise.all([d.listNetworks(), d.listContainers()]);
+    noteDockerNetworks(networks as DockerNetworkInfo[], containers as DockerContainerInfo[]);
   } catch {
-    // Docker unreachable: keep what was known before.
+    // Docker unreachable: keep the networks known before, and trust only the Caddy seen last.
+    const d = dg.__gluonZoneDockerNets;
+    if (d) dg.__gluonZoneDockerNets = { ...d, proxies: new Set(d.caddy) };
   } finally {
     dg.__gluonZoneDockerBusy = false;
   }
 }
 
-function isContainer(a: string): boolean {
+function dockerNets(): DockerNets | undefined {
   const d = dg.__gluonZoneDockerNets;
-  if (!d || Date.now() - d.at > 60_000) void refreshDockerNetworks();
+  if (!d || Date.now() - d.at > FRESH_MS) refreshSoon();
+  return d;
+}
+
+function refreshSoon() {
+  if (Date.now() - (dg.__gluonZoneDockerTried ?? 0) >= RETRY_MS) void refreshDockerNetworks();
+}
+
+function isContainer(a: string): boolean {
+  const d = dockerNets();
   if (!d || d.gateways.has(a)) return false;
   return d.list.check(a, family(a)!);
 }
+
+/**
+ * Whether a private peer may say who it forwards for: this machine itself, another machine on the
+ * LAN, or a proxy container. Without anything from Docker yet, only this machine may.
+ */
+function forwarderTrusted(peer: string): boolean {
+  if (LOOPBACK.check(peer, family(peer)!)) return true;
+  const d = dockerNets();
+  if (!d) return false;
+  if (d.gateways.has(peer)) return true;
+  if (!d.list.check(peer, family(peer)!)) return true;
+  if (d.proxies.has(peer)) return true;
+  refreshSoon();
+  return false;
+}
+
+const LOOPBACK = (() => {
+  const l = new net.BlockList();
+  l.addSubnet("127.0.0.0", 8, "ipv4");
+  l.addAddress("::1", "ipv6");
+  return l;
+})();
 
 const family = (a: string) => (net.isIPv4(a) ? "ipv4" : net.isIPv6(a) ? "ipv6" : null);
 
@@ -253,16 +322,16 @@ function fromChain(xff: string): string | null | "invalid" {
 
 /**
  * In production `docker/gluon-server.cjs` stamps the TCP peer and drops forwarding headers that
- * didn't come from a private hop. A peer outside the home network is the client, full stop; a private
- * peer may say who it forwards for, but can only claim an address it could already act as (home) or
- * "away", so trusting it grants nothing. Without the peer stamp in production, fail closed: away.
+ * didn't come from a private hop. A peer outside the home network is the client, full stop, and so is
+ * a container that isn't a proxy (see forwarderTrusted). Other private peers may say who they forward
+ * for. Without the peer stamp in production, fail closed: away.
  */
 export function clientInfo(headers: Headers): { ip: string; zone: Zone } {
   const stamped = parseAddr(headers.get(PEER_HEADER));
   if (!stamped && (process.env.GLUON_PEER_HEADER ?? process.env.TEND_PEER_HEADER) === "1") return { ip: "unknown", zone: "away" };
 
   let ip: string | null;
-  if (stamped && !isPrivate(stamped) && !isHomeIp(stamped)) {
+  if (stamped && ((!isPrivate(stamped) && !isHomeIp(stamped)) || !forwarderTrusted(stamped))) {
     ip = stamped;
   } else {
     // Next itself fills X-Forwarded-For with the socket address when no proxy sent one.

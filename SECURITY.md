@@ -22,5 +22,8 @@ newest release gets security fixes.
 
 - Keep Gluon behind Caddy (or another TLS proxy) if it's reachable from the internet, and set up
   two-step sign-in from home before publishing it.
+- Gluon only believes "this request is for someone at home" from its own Caddy container (named
+  `caddy`, or `GLUON_CADDY_CONTAINER`) or a container publishing port 80 or 443. Any other container
+  is judged by its own address, so an app can't pass itself off as a device at home.
 - Anyone with an admin account effectively has root on the server. Give household members the
   member role.
