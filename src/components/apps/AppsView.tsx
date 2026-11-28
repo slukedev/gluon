@@ -12,6 +12,7 @@ import { useFormat, usePrefs } from "@/components/PrefsProvider";
 import { Empty, Notice } from "@/components/ui/Surface";
 import { AppsHead, AppsBody } from "@/components/apps/AppsFrame";
 import { AppsTabLoading } from "./AppsTabLoading";
+import { LoadError } from "@/components/docker/shared";
 import { NewAppButton } from "@/components/builder/NewAppButton";
 import { StateLine } from "@/components/ui/StateLine";
 import { Segmented } from "@/components/ui/Field";
@@ -57,9 +58,7 @@ function AppsUnread(props: AppsViewProps) {
     <>
       <AppsHead summary="The apps can't be listed right now." />
       <AppsBody>
-        <Notice tone="fault" title={error.code === "network" ? "Can't reach the server" : "Couldn't ask Docker for the apps"} action={<Button size="sm" loading={isValidating} onClick={() => void mutate()}>Try again</Button>}>
-          {error.code === "network" ? "Check the connection, then try again." : error.code === "internal" ? "Docker may be restarting. Try again in a moment." : error.message}
-        </Notice>
+        <LoadError error={error} what="the apps" retrying={isValidating} onRetry={() => void mutate()} />
       </AppsBody>
     </>
   );
@@ -287,8 +286,8 @@ function AppsList({ initial, initialSort, initialFilter, platform }: AppsViewPro
       <AppsBody>
       <span className="sr-only" role="status">{said}</span>
       {appsError && (
-        <Notice tone="fault" title="Couldn't refresh the apps" action={<Button size="sm" onClick={() => void mutate()}>Try again</Button>}>
-          {appsError.message} The list may be out of date.
+        <Notice tone="fault" title={appsError.code === "docker_down" ? "Docker isn't answering" : "Couldn't refresh the apps"} action={<Button size="sm" onClick={() => void mutate()}>Try again</Button>}>
+          {appsError.code === "docker_down" ? "Check that Docker is running on the server." : appsError.message} The list may be out of date.
         </Notice>
       )}
 

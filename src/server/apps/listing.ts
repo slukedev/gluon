@@ -1,10 +1,19 @@
 import "server-only";
 import type { User } from "@/server/auth/users";
 import { appsForMember, listApps } from "@/server/docker/apps";
+import { dockerError } from "@/server/dockerx/core";
 import { movingApps } from "./move";
 
 /** Home's first paint reads this too, so the two never disagree. */
 export async function appsFor(user: User) {
+  try {
+    return await listFor(user);
+  } catch (e) {
+    throw dockerError(e, "Couldn't list the apps");
+  }
+}
+
+async function listFor(user: User) {
   if (user.role === "admin") {
     const [apps, moving] = [await listApps(), movingApps()];
     return moving.size ? apps.map((a) => (moving.has(a.id) ? { ...a, moving: true } : a)) : apps;
