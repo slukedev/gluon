@@ -1,0 +1,10 @@
+.frame {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: max(48px, env(safe-area-inset-top)) max(var(--gutter), env(safe-area-inset-right)) max(48px, env(safe-area-inset-bottom)) max(var(--gutter), env(safe-area-inset-left));
+}
+.plate { width: min(380px, 100%); display: grid; gap: 12px; justify-items: start; }
+.mark { width: 22px; height: 22px; margin-bottom: 8px; color: var(--ink); }
+.title { font-family: var(--font-display); font-stretch: 80%; font-size: var(--text-3xl); font-weight: 540; line-height: 1.02; letter-spacing: -0.012em; }
+.text { margin-bottom: 8px; font-size: var(--text-base); color: var(--ink-2); line-height: 1.5; text-wrap: pretty; }
