@@ -47,9 +47,12 @@ export function InviteForm({ token, displayName, role, serverName, mustEnrol, re
     router.refresh();
   }, [router]);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  // Read from the form, not state: what was typed before the page hydrated is in the fields but not yet in state.
+  async function submit(form: FormData) {
     if (busy) return;
+    const read = (k: string) => String(form.get(k) ?? "");
+    const f ={ displayName: read("displayName"), username: read("username"), password: read("password"), confirm: read("confirm") };
+    setF(f);
     if (f.username.trim().length < 2) return setError({ message: "Choose a username of at least 2 characters.", field: "username" });
     if (!f.password) return setError({ message: "Choose a password.", field: "password" });
     if (f.password !== f.confirm) return setError({ message: "The passwords don't match.", field: "confirm" });
@@ -110,7 +113,17 @@ export function InviteForm({ token, displayName, role, serverName, mustEnrol, re
 
   const err = (field: string) => (error?.field === field ? error.message : null);
   return (
-    <form className={s.form} onSubmit={submit} noValidate data-wide={mustEnrol ? "" : undefined}>
+    <form
+      className={s.form}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit(new FormData(e.currentTarget));
+      }}
+      // A press before hydration is held by React and handed here once the page is ready, instead of reloading it.
+      action={submit}
+      noValidate
+      data-wide={mustEnrol ? "" : undefined}
+    >
       {mustEnrol && <FlowSteps steps={ENROL_STEPS} current="account" label="Joining as an admin" />}
       <h1>{displayName ? `Welcome, ${displayName}` : `Join ${serverName}`}</h1>
       <p className={s.lede}>
@@ -118,19 +131,19 @@ export function InviteForm({ token, displayName, role, serverName, mustEnrol, re
         {mustEnrol && " Admins joining from away also link an authenticator app."}
       </p>
       <Field label="Your name" error={err("displayName")}>
-        <Input value={f.displayName} onChange={set("displayName")} autoComplete="name" autoFocus={!displayName} maxLength={60} />
+        <Input name="displayName" value={f.displayName} onChange={set("displayName")} autoComplete="name" autoFocus={!displayName} maxLength={60} />
       </Field>
       <Field label="Username" error={err("username")} description="What you'll sign in with.">
-        <Input value={f.username} onChange={set("username")} autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus={!!displayName} maxLength={32} />
+        <Input name="username" value={f.username} onChange={set("username")} autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus={!!displayName} maxLength={32} />
       </Field>
       <div className={s.passwordPair}>
         <Field label="Password" error={err("password")}>
-          <Input type="password" value={f.password} onChange={set("password")} autoComplete="new-password" maxLength={256} />
+          <Input name="password" type="password" value={f.password} onChange={set("password")} autoComplete="new-password" maxLength={256} />
         </Field>
         <PasswordStrength value={f.password} context={[f.username, f.displayName, serverName]} />
       </div>
       <Field label="Password again" error={err("confirm")}>
-        <Input type="password" value={f.confirm} onChange={set("confirm")} autoComplete="new-password" maxLength={256} />
+        <Input name="confirm" type="password" value={f.confirm} onChange={set("confirm")} autoComplete="new-password" maxLength={256} />
       </Field>
       {error && !error.field && (
         <p className={s.error} role="alert">
